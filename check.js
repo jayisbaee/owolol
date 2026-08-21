@@ -1,0 +1,1 @@
+ require('dotenv').config(); console.log('CLIENT_ID:', process.env.CLIENT_ID); console.log('TOKEN starts with:', (process.env.DISCORD_TOKEN || '').slice(0, 10));

@@ -6,7 +6,7 @@ const pool = new Pool({
   ssl: config.databaseUrl && config.databaseUrl.includes('railway')
     ? { rejectUnauthorized: false }
     : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
-});
+}); pool.on('error', (err) => console.error('DB error:', err.message));
 
 // Makes sure the users table exists so you don't have to run schema.sql by hand.
 async function ensureSchema() {
