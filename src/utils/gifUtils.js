@@ -11,7 +11,7 @@ function randomFromArray(arr) {
 
 // Fails fast instead of hanging — the caller has a limited window to reply
 // to the user, so a slow gif API shouldn't make them wait forever.
-async function fetchWithTimeout(url, ms = 4000) {
+async function fetchWithTimeout(url, ms = 9000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
