@@ -9,6 +9,18 @@ function randomFromArray(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// Fails fast instead of hanging — the caller has a limited window to reply
+// to the user, so a slow gif API shouldn't make them wait forever.
+async function fetchWithTimeout(url, ms = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Queries Tenor's v2 search API and returns a random gif URL from the results,
 // or null if no API key is set / the request fails / nothing is found.
 async function fetchTenorGif(searchTerm) {
@@ -19,7 +31,7 @@ async function fetchTenorGif(searchTerm) {
       `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(searchTerm)}` +
       `&key=${config.tenorApiKey}&client_key=owo_clone_bot&limit=25&media_filter=gif&contentfilter=high`;
 
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -42,7 +54,7 @@ async function fetchGiphyGif(searchTerm) {
       `https://api.giphy.com/v1/gifs/search?api_key=${key}` +
       `&q=${encodeURIComponent(searchTerm)}&limit=25&rating=pg-13&lang=en`;
 
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
 
     const data = await res.json();

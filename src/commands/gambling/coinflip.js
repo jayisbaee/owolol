@@ -22,11 +22,14 @@ module.exports = {
     const side = interaction.options.getString('side');
     const userId = interaction.user.id;
 
+    // Fetching a gif can take a moment — defer immediately so Discord doesn't
+    // time out the interaction while we wait on the network call.
+    await interaction.deferReply();
+
     const user = await db.getUser(userId);
     if (user.balance < amount) {
-      return interaction.reply({
+      return interaction.editReply({
         content: `You don't have enough coins. Your balance: ${formatMoney(user.balance)}`,
-        ephemeral: true,
       });
     }
 
@@ -50,6 +53,6 @@ module.exports = {
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
     if (gifUrl) embed.setImage(gifUrl);
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };

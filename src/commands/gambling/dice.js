@@ -16,11 +16,12 @@ module.exports = {
     const amount = interaction.options.getInteger('amount');
     const userId = interaction.user.id;
 
+    await interaction.deferReply();
+
     const user = await db.getUser(userId);
     if (user.balance < amount) {
-      return interaction.reply({
+      return interaction.editReply({
         content: `You don't have enough coins. Your balance: ${formatMoney(user.balance)}`,
-        ephemeral: true,
       });
     }
 
@@ -56,6 +57,6 @@ module.exports = {
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
     if (gifUrl) embed.setImage(gifUrl);
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
