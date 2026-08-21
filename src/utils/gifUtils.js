@@ -55,14 +55,23 @@ async function fetchGiphyGif(searchTerm) {
       `&q=${encodeURIComponent(searchTerm)}&limit=25&rating=pg-13&lang=en`;
 
     const res = await fetchWithTimeout(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[gifUtils] Giphy request failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
 
     const data = await res.json();
-    if (!data.data || data.data.length === 0) return null;
+    if (!data.data || data.data.length === 0) {
+      console.error(`[gifUtils] Giphy returned no results for "${searchTerm}"`);
+      return null;
+    }
 
     const pick = randomFromArray(data.data);
-    return pick.images?.original?.url || pick.images?.downsized?.url || null;
-  } catch (_) {
+    const gifUrl = pick.images?.original?.url || pick.images?.downsized?.url || null;
+    if (!gifUrl) console.error('[gifUtils] Giphy result had no usable image URL:', JSON.stringify(pick.images));
+    return gifUrl;
+  } catch (err) {
+    console.error('[gifUtils] Giphy request threw an error:', err);
     return null;
   }
 }
