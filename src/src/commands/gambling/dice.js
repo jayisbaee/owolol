@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
+const { getGif } = require('../../utils/gifUtils');
 
 // Bet on whether your roll (1-6) beats the bot's roll (1-6). Ties refund the bet.
 module.exports = {
@@ -42,12 +43,18 @@ module.exports = {
     }
 
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = delta > 0
+      ? await getGif('win', 'dice roll win celebration')
+      : delta < 0
+      ? await getGif('lose', 'dice roll lose sad')
+      : null;
 
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle('🎲 Dice Roll-off')
       .setDescription(`You rolled **${yourRoll}**, the house rolled **${houseRoll}**.\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     await interaction.reply({ embeds: [embed] });
   },

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
+const { getGif } = require('../../utils/gifUtils');
 
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 // Payout multiplier when all 3 reels match, keyed by symbol.
@@ -47,12 +48,14 @@ module.exports = {
     }
 
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = await getGif('slots', 'slot machine spinning jackpot');
 
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     await interaction.reply({ embeds: [embed] });
   },
