@@ -10,8 +10,6 @@ module.exports = {
   clientId: process.env.CLIENT_ID,
   guildId: process.env.GUILD_ID || null,
   databaseUrl: process.env.DATABASE_URL,
-  tenorApiKey: process.env.TENOR_API_KEY || null,
-  giphyApiKey: process.env.GIPHY_API_KEY || null,
   adminIds,
   prefix: process.env.PREFIX || 'jayjay ',
   currencySymbol: '🪙',

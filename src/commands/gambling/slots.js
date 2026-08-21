@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
-const { getGif } = require('../../utils/gifUtils');
 
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 // Payout multiplier when all 3 reels match, keyed by symbol.
@@ -19,12 +18,11 @@ module.exports = {
     const amount = interaction.options.getInteger('amount');
     const userId = interaction.user.id;
 
-    await interaction.deferReply();
-
     const user = await db.getUser(userId);
     if (user.balance < amount) {
-      return interaction.editReply({
+      return interaction.reply({
         content: `You don't have enough coins. Your balance: ${formatMoney(user.balance)}`,
+        ephemeral: true,
       });
     }
 
@@ -49,15 +47,13 @@ module.exports = {
     }
 
     const updated = await db.addBalance(userId, delta);
-    const gifUrl = await getGif('slots', 'slot machine spinning jackpot');
 
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    if (gifUrl) embed.setImage(gifUrl);
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed] });
   },
 };

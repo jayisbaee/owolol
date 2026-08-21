@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
-const { getGif } = require('../../utils/gifUtils');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,14 +21,11 @@ module.exports = {
     const side = interaction.options.getString('side');
     const userId = interaction.user.id;
 
-    // Fetching a gif can take a moment — defer immediately so Discord doesn't
-    // time out the interaction while we wait on the network call.
-    await interaction.deferReply();
-
     const user = await db.getUser(userId);
     if (user.balance < amount) {
-      return interaction.editReply({
+      return interaction.reply({
         content: `You don't have enough coins. Your balance: ${formatMoney(user.balance)}`,
+        ephemeral: true,
       });
     }
 
@@ -37,10 +33,6 @@ module.exports = {
     const won = result === side;
     const delta = won ? amount : -amount;
     const updated = await db.addBalance(userId, delta);
-    const gifUrl = await getGif(
-      won ? 'win' : 'lose',
-      won ? 'coin flip win celebration' : 'coin flip lose sad'
-    );
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
@@ -51,8 +43,7 @@ module.exports = {
           : `You lost **${formatMoney(amount)}**.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    if (gifUrl) embed.setImage(gifUrl);
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed] });
   },
 };

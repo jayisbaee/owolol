@@ -2,7 +2,6 @@ const { EmbedBuilder } = require('discord.js');
 const db = require('./database');
 const config = require('./config');
 const { formatMoney, msToTimeString, isAdmin, randInt } = require('./utils/economyUtils');
-const { getGif } = require('./utils/gifUtils');
 
 // Resolves a "target user" from a mention (<@id>) or a raw numeric ID in args[0].
 // Falls back to the message author if nothing valid was given.
@@ -152,17 +151,12 @@ const handlers = {
     const result = Math.random() < 0.5 ? 'heads' : 'tails';
     const won = result === side;
     const updated = await db.addBalance(userId, won ? amount : -amount);
-    const gifUrl = await getGif(
-      won ? 'win' : 'lose',
-      won ? 'coin flip win celebration' : 'coin flip lose sad'
-    );
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
       .setTitle(`🪙 The coin landed on ${result}!`)
       .setDescription(won ? `You won **${formatMoney(amount)}**!` : `You lost **${formatMoney(amount)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    if (gifUrl) embed.setImage(gifUrl);
     await message.reply({ embeds: [embed] });
   },
 
