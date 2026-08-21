@@ -1,26 +1,9 @@
 const config = require('../config');
 
-// Used only if TENOR_API_KEY isn't set, or if a Tenor request fails —
-// keeps the feature working out of the box with zero setup.
-const FALLBACK_GIFS = {
-  win: [
-    'https://media.tenor.com/z1WkTGuVQDwAAAAC/money-cash.gif',
-    'https://media.tenor.com/2roX2vf5CzUAAAAC/celebration-win.gif',
-    'https://media.tenor.com/RaR2vk4qMhAAAAAC/success-kid-yes.gif',
-    'https://media.tenor.com/aA_6vJ9lFUUAAAAC/winning-happy.gif',
-  ],
-  lose: [
-    'https://media.tenor.com/8kk_ULM_5CoAAAAC/sad-disappointed.gif',
-    'https://media.tenor.com/y6ay1SqSMzsAAAAC/lose-losing.gif',
-    'https://media.tenor.com/2SS8QhKfg2AAAAAC/crying-sad.gif',
-    'https://media.tenor.com/HmQPGeVXNZoAAAAC/oh-no-fail.gif',
-  ],
-  slots: [
-    'https://media.tenor.com/eLg8h_6cVLYAAAAC/slot-machine-casino.gif',
-    'https://media.tenor.com/2wUYh6MZoyMAAAAC/slots-casino.gif',
-    'https://media.tenor.com/CVzn6r1LSycAAAAC/casino-slots.gif',
-  ],
-};
+// Giphy's official public "beta" key — documented at developers.giphy.com,
+// requires no signup, and is meant exactly for cases like this. Rate-limited
+// but plenty for a Discord bot. Works out of the box with zero setup.
+const GIPHY_PUBLIC_KEY = 'dc6zaTOxFJmzC';
 
 function randomFromArray(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -49,12 +32,43 @@ async function fetchTenorGif(searchTerm) {
   }
 }
 
-// category: 'win' | 'lose' | 'slots' — used for the fallback pool.
-// searchTerm: what to search Tenor for when a live API key is configured.
+// Queries Giphy's search endpoint (more reliable results than /random for a
+// specific term) and returns a random gif URL from the top matches.
+async function fetchGiphyGif(searchTerm) {
+  const key = config.giphyApiKey || GIPHY_PUBLIC_KEY;
+
+  try {
+    const url =
+      `https://api.giphy.com/v1/gifs/search?api_key=${key}` +
+      `&q=${encodeURIComponent(searchTerm)}&limit=25&rating=pg-13&lang=en`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (!data.data || data.data.length === 0) return null;
+
+    const pick = randomFromArray(data.data);
+    return pick.images?.original?.url || pick.images?.downsized?.url || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// category is currently unused but kept in the signature in case future
+// callers want category-specific behavior without changing every call site.
+// searchTerm: what to search for. Tries Tenor first (if a key is configured),
+// then falls back to Giphy's public key. Returns null if both fail, in which
+// case the caller should just skip attaching an image.
 async function getGif(category, searchTerm) {
   const tenorResult = await fetchTenorGif(searchTerm);
   if (tenorResult) return tenorResult;
-  return randomFromArray(FALLBACK_GIFS[category] || []);
+
+  const giphyResult = await fetchGiphyGif(searchTerm);
+  if (giphyResult) return giphyResult;
+
+  return null;
 }
 
 module.exports = { getGif };
+
