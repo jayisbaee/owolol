@@ -1,7 +1,78 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 const config = require('./config');
 const { formatMoney, msToTimeString, isAdmin, randInt } = require('./utils/economyUtils');
+const { freshDeck, handValue } = require('./games/blackjackEngine');
+const {
+  TOTAL_TILES: MINES_TOTAL_TILES,
+  MAX_MULTIPLIER: MINES_MAX_MULTIPLIER,
+  MINE_CHOICES,
+  multiplierFor,
+  pickMinePositions,
+} = require('./games/minesEngine');
+const blackjackCommand = require('./commands/gambling/blackjack');
+const minesCommand = require('./commands/gambling/mines');
+
+// Maps short aliases to their real command name — resolved in messageCreate.js.
+const ALIASES = {
+  cf: 'coinflip',
+  bj: 'blackjack',
+  s: 'slots',
+};
+
+// Parses a bet amount argument, supporting the special value "all" to bet
+// the user's entire current balance. Returns { amount, isAll } or null if
+// the input isn't valid at all (missing/non-numeric/non-"all").
+function parseBetAmount(raw, currentBalance) {
+  if (!raw) return null;
+  if (raw.toLowerCase() === 'all') {
+    return { amount: currentBalance, isAll: true };
+  }
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return { amount: n, isAll: false };
+}
+
+// Shows a warning embed with Confirm/Cancel buttons before letting someone
+// bet their entire balance. Returns true only if they explicitly confirm
+// within the time limit — every other outcome (cancel, timeout, error)
+// returns false so the caller can safely bail out.
+async function confirmAllIn(message, amount) {
+  const warnEmbed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle('⚠️ WARNING: All-In Bet')
+    .setDescription(
+      `You're about to risk your **ENTIRE balance** of **${formatMoney(amount)}**.\n\n` +
+      `If you lose, it is **gone**. This cannot be undone.\n\nAre you sure?`
+    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('allin_confirm').setLabel('Yes, risk it all').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('allin_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+  );
+
+  const warnMsg = await message.reply({ embeds: [warnEmbed], components: [row] });
+
+  try {
+    const btnInteraction = await warnMsg.awaitMessageComponent({
+      filter: (i) => i.user.id === message.author.id,
+      time: 30_000,
+    });
+
+    if (btnInteraction.customId === 'allin_confirm') {
+      await btnInteraction.update({
+        embeds: [warnEmbed.setDescription(`✅ Confirmed — risking **${formatMoney(amount)}**...`)],
+        components: [],
+      });
+      return true;
+    }
+
+    await btnInteraction.update({ content: '❌ Cancelled — no coins were risked.', embeds: [], components: [] });
+    return false;
+  } catch (_) {
+    await warnMsg.edit({ content: '⏳ Confirmation timed out — bet cancelled.', embeds: [], components: [] }).catch(() => {});
+    return false;
+  }
+}
 
 // Resolves a "target user" from a mention (<@id>) or a raw numeric ID in args[0].
 // Falls back to the message author if nothing valid was given.
@@ -136,17 +207,26 @@ const handlers = {
   },
 
   async coinflip(message, args) {
-    const amount = parseAmount(args[0]);
     const side = (args[1] || '').toLowerCase();
-
-    if (!amount) return message.reply(`Usage: \`${config.prefix}coinflip <amount> <heads|tails>\``);
+    if (!args[0]) return message.reply(`Usage: \`${config.prefix}coinflip <amount|all> <heads|tails>\``);
     if (!['heads', 'tails'].includes(side)) return message.reply('Pick a side: `heads` or `tails`.');
 
     const userId = message.author.id;
     const user = await db.getUser(userId);
-    if (user.balance < amount) {
+    const parsed = parseBetAmount(args[0], user.balance);
+    if (!parsed) return message.reply('Please give a valid positive amount, or `all`.');
+
+    if (parsed.isAll) {
+      if (user.balance <= 0) return message.reply("You don't have any coins to bet.");
+      const confirmed = await confirmAllIn(message, user.balance);
+      if (!confirmed) return;
+    } else if (user.balance < parsed.amount) {
       return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
     }
+
+    const fresh = await db.getUser(userId);
+    const amount = parsed.isAll ? fresh.balance : parsed.amount;
+    if (amount <= 0) return message.reply('You have no balance left to bet.');
 
     const result = Math.random() < 0.5 ? 'heads' : 'tails';
     const won = result === side;
@@ -161,14 +241,24 @@ const handlers = {
   },
 
   async dice(message, args) {
-    const amount = parseAmount(args[0]);
-    if (!amount) return message.reply(`Usage: \`${config.prefix}dice <amount>\``);
+    if (!args[0]) return message.reply(`Usage: \`${config.prefix}dice <amount|all>\``);
 
     const userId = message.author.id;
     const user = await db.getUser(userId);
-    if (user.balance < amount) {
+    const parsed = parseBetAmount(args[0], user.balance);
+    if (!parsed) return message.reply('Please give a valid positive amount, or `all`.');
+
+    if (parsed.isAll) {
+      if (user.balance <= 0) return message.reply("You don't have any coins to bet.");
+      const confirmed = await confirmAllIn(message, user.balance);
+      if (!confirmed) return;
+    } else if (user.balance < parsed.amount) {
       return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
     }
+
+    const fresh = await db.getUser(userId);
+    const amount = parsed.isAll ? fresh.balance : parsed.amount;
+    if (amount <= 0) return message.reply('You have no balance left to bet.');
 
     const yourRoll = randInt(1, 6);
     const houseRoll = randInt(1, 6);
@@ -191,14 +281,24 @@ const handlers = {
   },
 
   async slots(message, args) {
-    const amount = parseAmount(args[0]);
-    if (!amount) return message.reply(`Usage: \`${config.prefix}slots <amount>\``);
+    if (!args[0]) return message.reply(`Usage: \`${config.prefix}slots <amount|all>\` (or \`${config.prefix}s <amount>\`)`);
 
     const userId = message.author.id;
     const user = await db.getUser(userId);
-    if (user.balance < amount) {
+    const parsed = parseBetAmount(args[0], user.balance);
+    if (!parsed) return message.reply('Please give a valid positive amount, or `all`.');
+
+    if (parsed.isAll) {
+      if (user.balance <= 0) return message.reply("You don't have any coins to bet.");
+      const confirmed = await confirmAllIn(message, user.balance);
+      if (!confirmed) return;
+    } else if (user.balance < parsed.amount) {
       return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
     }
+
+    const fresh = await db.getUser(userId);
+    const amount = parsed.isAll ? fresh.balance : parsed.amount;
+    if (amount <= 0) return message.reply('You have no balance left to bet.');
 
     const reels = [0, 0, 0].map(() => SYMBOLS[randInt(0, SYMBOLS.length - 1)]);
     const allMatch = reels[0] === reels[1] && reels[1] === reels[2];
@@ -280,6 +380,231 @@ const handlers = {
     await message.reply({ embeds: [embed] });
   },
 
+  async blackjack(message, args) {
+    if (!args[0]) return message.reply(`Usage: \`${config.prefix}blackjack <amount|all>\` (or \`${config.prefix}bj <amount>\`)`);
+
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+    const parsed = parseBetAmount(args[0], user.balance);
+    if (!parsed) return message.reply('Please give a valid positive amount, or `all`.');
+
+    if (parsed.isAll) {
+      if (user.balance <= 0) return message.reply("You don't have any coins to bet.");
+      const confirmed = await confirmAllIn(message, user.balance);
+      if (!confirmed) return;
+    } else if (user.balance < parsed.amount) {
+      return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
+    }
+
+    const fresh = await db.getUser(userId);
+    const amount = parsed.isAll ? fresh.balance : parsed.amount;
+    if (amount <= 0) return message.reply('You have no balance left to bet.');
+
+    await db.addBalance(userId, -amount);
+
+    const deck = freshDeck();
+    const player = [deck.pop(), deck.pop()];
+    const dealer = [deck.pop(), deck.pop()];
+
+    const playerBlackjack = handValue(player) === 21;
+    const dealerBlackjack = handValue(dealer) === 21;
+
+    if (playerBlackjack || dealerBlackjack) {
+      return blackjackCommand.finish({
+        respond: (payload) => message.reply(payload),
+        player, dealer, amount, userId, deck,
+      });
+    }
+
+    const embed = blackjackCommand.buildEmbed({ player, dealer, revealDealer: false });
+    const row = blackjackCommand.buildButtons();
+    const sent = await message.reply({ embeds: [embed], components: [row] });
+
+    const collector = sent.createMessageComponentCollector({
+      filter: (i) => i.user.id === userId,
+      time: 60_000,
+    });
+
+    collector.on('collect', async (btnInteraction) => {
+      if (btnInteraction.customId === 'bj_hit') {
+        player.push(deck.pop());
+        if (handValue(player) > 21) {
+          collector.stop('bust');
+          await blackjackCommand.finish({
+            respond: (payload) => btnInteraction.update(payload),
+            player, dealer, amount, userId, deck,
+          });
+          return;
+        }
+        await btnInteraction.update({
+          embeds: [blackjackCommand.buildEmbed({ player, dealer, revealDealer: false })],
+          components: [blackjackCommand.buildButtons()],
+        });
+      } else if (btnInteraction.customId === 'bj_stand') {
+        collector.stop('stand');
+        await blackjackCommand.finish({
+          respond: (payload) => btnInteraction.update(payload),
+          player, dealer, amount, userId, deck,
+        });
+      }
+    });
+
+    collector.on('end', async (_collected, reason) => {
+      if (reason === 'time') {
+        try {
+          await sent.edit({ components: [blackjackCommand.buildButtons(true)] });
+        } catch (_) {}
+      }
+    });
+  },
+
+  async mines(message, args) {
+    if (!args[0]) return message.reply(`Usage: \`${config.prefix}mines <amount|all> [mines: 1|3|5|8]\``);
+
+    const minesArg = args[1] ? parseInt(args[1], 10) : 3;
+    const mines = MINE_CHOICES.includes(minesArg) ? minesArg : 3;
+
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+    const parsed = parseBetAmount(args[0], user.balance);
+    if (!parsed) return message.reply('Please give a valid positive amount, or `all`.');
+
+    if (parsed.isAll) {
+      if (user.balance <= 0) return message.reply("You don't have any coins to bet.");
+      const confirmed = await confirmAllIn(message, user.balance);
+      if (!confirmed) return;
+    } else if (user.balance < parsed.amount) {
+      return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
+    }
+
+    const fresh = await db.getUser(userId);
+    const amount = parsed.isAll ? fresh.balance : parsed.amount;
+    if (amount <= 0) return message.reply('You have no balance left to bet.');
+
+    await db.addBalance(userId, -amount);
+
+    const minePositions = pickMinePositions(mines);
+    const revealed = new Set();
+    let gameOver = false;
+
+    const embed = minesCommand.buildEmbed({ amount, mines, revealed, gameOver });
+    const components = minesCommand.buildGrid({ minePositions, revealed, gameOver, revealMines: false });
+    const sent = await message.reply({ embeds: [embed], components });
+
+    const collector = sent.createMessageComponentCollector({
+      filter: (i) => i.user.id === userId,
+      time: 5 * 60_000,
+    });
+
+    collector.on('collect', async (btnInteraction) => {
+      if (gameOver) return;
+
+      if (btnInteraction.customId === 'mines_cashout') {
+        gameOver = true;
+        const mult = multiplierFor(revealed.size, mines);
+        const payout = Math.floor(amount * mult);
+        const updated = await db.addBalance(userId, payout);
+
+        const finalEmbed = minesCommand.buildEmbed({
+          amount, mines, revealed, gameOver: true, color: 0x57f287,
+          statusText: `💰 Cashed out at **${mult.toFixed(2)}x** for **${formatMoney(payout)}**!`,
+        }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+        const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
+        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        collector.stop('cashout');
+        return;
+      }
+
+      const match = btnInteraction.customId.match(/^mines_tile_(\d+)$/);
+      if (!match) return;
+      const idx = parseInt(match[1], 10);
+      if (revealed.has(idx)) return;
+
+      if (minePositions.has(idx)) {
+        gameOver = true;
+        const finalEmbed = minesCommand.buildEmbed({
+          amount, mines, revealed, gameOver: true, color: 0xed4245,
+          statusText: `💥 Boom! You hit a mine and lost **${formatMoney(amount)}**.`,
+        });
+        const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
+        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        collector.stop('mine');
+        return;
+      }
+
+      revealed.add(idx);
+      const safeCount = MINES_TOTAL_TILES - mines;
+
+      if (revealed.size === safeCount) {
+        gameOver = true;
+        const payout = Math.floor(amount * MINES_MAX_MULTIPLIER);
+        const updated = await db.addBalance(userId, payout);
+
+        const finalEmbed = minesCommand.buildEmbed({
+          amount, mines, revealed, gameOver: true, color: 0x57f287,
+          statusText: `🏆 You cleared the board! Max payout: **${formatMoney(payout)}**!`,
+        }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+        const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
+        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        collector.stop('cleared');
+        return;
+      }
+
+      const updatedEmbed = minesCommand.buildEmbed({ amount, mines, revealed, gameOver: false });
+      const updatedComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: false, revealMines: false });
+      await btnInteraction.update({ embeds: [updatedEmbed], components: updatedComponents });
+    });
+
+    collector.on('end', async (_collected, reason) => {
+      if (reason === 'time' && !gameOver) {
+        gameOver = true;
+        const mult = multiplierFor(revealed.size, mines);
+        const payout = Math.floor(amount * mult);
+        const updated = await db.addBalance(userId, payout);
+
+        const finalEmbed = minesCommand.buildEmbed({
+          amount, mines, revealed, gameOver: true, color: 0xf5c518,
+          statusText: `⏳ Timed out — auto cashed out at **${mult.toFixed(2)}x** for **${formatMoney(payout)}**.`,
+        }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+        const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
+        try {
+          await sent.edit({ embeds: [finalEmbed], components: finalComponents });
+        } catch (_) {}
+      }
+    });
+  },
+
+  async jackpot(message) {
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+
+    if (user.balance <= 0) {
+      return message.reply(`You don't have any coins to risk. Your balance: ${formatMoney(user.balance)}`);
+    }
+
+    const confirmed = await confirmAllIn(message, user.balance);
+    if (!confirmed) return;
+
+    const fresh = await db.getUser(userId);
+    const stake = fresh.balance;
+    if (stake <= 0) return message.reply('You have no balance left to risk.');
+
+    const won = Math.random() < 0.5;
+    const delta = won ? stake : -stake;
+    const updated = await db.addBalance(userId, delta);
+
+    const embed = new EmbedBuilder()
+      .setColor(won ? 0x57f287 : 0xed4245)
+      .setTitle('🎰 JACKPOT')
+      .setDescription(
+        won
+          ? `🎉 **YOU WON!** Your **${formatMoney(stake)}** balance was doubled!`
+          : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
+      )
+      .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
+  },
+
   async help(message) {
     const p = config.prefix;
     const embed = new EmbedBuilder()
@@ -288,11 +613,14 @@ const handlers = {
       .setDescription(
         `Both \`/slash\` commands and \`${p}prefix\` commands work.\n\n` +
         `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n\n` +
-        `**Gambling**\n\`${p}coinflip <amount> <heads|tails>\`, \`${p}dice <amount>\`, \`${p}slots <amount>\`\n\n` +
-        `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\``
+        `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
+        `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
+        `\`${p}mines <amount|all> [mines]\`, \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +
+        `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n\n` +
+        `Tip: type \`all\` instead of an amount on any gambling command to bet your whole balance (with a confirmation step).`
       );
     await message.reply({ embeds: [embed] });
   },
 };
 
-module.exports = { handlers };
+module.exports = { handlers, ALIASES };

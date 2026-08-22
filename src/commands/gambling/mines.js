@@ -6,34 +6,16 @@ const {
   ButtonStyle,
 } = require('discord.js');
 const db = require('../../database');
-const { formatMoney, randInt } = require('../../utils/economyUtils');
-
-// 5 columns x 4 rows = 20 tiles, leaving a 5th button row free for Cash Out
-// (Discord caps messages at 5 action rows total).
-const COLS = 5;
-const ROWS = 4;
-const TOTAL_TILES = COLS * ROWS;
-const MAX_MULTIPLIER = 16;
-
-const MINE_CHOICES = [1, 3, 5, 8];
-
-// Multiplier climbs smoothly from 1x toward MAX_MULTIPLIER as more safe
-// tiles get revealed, reaching exactly MAX_MULTIPLIER once every safe tile
-// on the board has been found. More mines -> fewer safe tiles -> the
-// multiplier climbs faster per click, which is the risk/reward trade-off.
-function multiplierFor(revealed, mines) {
-  const safeCount = TOTAL_TILES - mines;
-  if (revealed <= 0) return 1;
-  return Math.pow(MAX_MULTIPLIER, revealed / safeCount);
-}
-
-function pickMinePositions(mines) {
-  const positions = new Set();
-  while (positions.size < mines) {
-    positions.add(randInt(0, TOTAL_TILES - 1));
-  }
-  return positions;
-}
+const { formatMoney } = require('../../utils/economyUtils');
+const {
+  COLS,
+  ROWS,
+  TOTAL_TILES,
+  MAX_MULTIPLIER,
+  MINE_CHOICES,
+  multiplierFor,
+  pickMinePositions,
+} = require('../../games/minesEngine');
 
 function buildGrid({ minePositions, revealed, gameOver, revealMines }) {
   const rows = [];
@@ -99,7 +81,7 @@ function buildEmbed({ amount, mines, revealed, statusText, color, gameOver }) {
   return embed;
 }
 
-module.exports = {
+const minesCommand = {
   data: new SlashCommandBuilder()
     .setName('mines')
     .setDescription('Reveal safe tiles to build a multiplier — cash out before you hit a mine')
@@ -127,8 +109,6 @@ module.exports = {
       });
     }
 
-    // Bet is taken up front, same pattern as blackjack — refunded via
-    // cash-out payout, or lost entirely if a mine is hit.
     await db.addBalance(userId, -amount);
 
     const minePositions = pickMinePositions(mines);
@@ -193,7 +173,6 @@ module.exports = {
       const safeCount = TOTAL_TILES - mines;
 
       if (revealed.size === safeCount) {
-        // Every safe tile found — auto cash out at the max multiplier.
         gameOver = true;
         const payout = Math.floor(amount * MAX_MULTIPLIER);
         const updated = await db.addBalance(userId, payout);
@@ -220,7 +199,6 @@ module.exports = {
 
     collector.on('end', async (_collected, reason) => {
       if (reason === 'time' && !gameOver) {
-        // Auto cash-out on timeout so an abandoned game doesn't just eat the bet.
         gameOver = true;
         const mult = multiplierFor(revealed.size, mines);
         const payout = Math.floor(amount * mult);
@@ -243,3 +221,7 @@ module.exports = {
     });
   },
 };
+
+module.exports = minesCommand;
+module.exports.buildGrid = buildGrid;
+module.exports.buildEmbed = buildEmbed;

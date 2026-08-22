@@ -1,5 +1,5 @@
 const config = require('../config');
-const { handlers } = require('../prefixHandler');
+const { handlers, ALIASES } = require('../prefixHandler');
 
 module.exports = {
   name: 'messageCreate',
@@ -9,7 +9,8 @@ module.exports = {
 
     const withoutPrefix = message.content.slice(config.prefix.length).trim();
     const args = withoutPrefix.split(/\s+/).filter(Boolean);
-    const commandName = (args.shift() || '').toLowerCase();
+    let commandName = (args.shift() || '').toLowerCase();
+    commandName = ALIASES[commandName] || commandName;
 
     const handler = handlers[commandName];
     if (!handler) return;
