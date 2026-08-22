@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
+const { applyLuckToReels } = require('../../games/luckEngine');
 
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 // Payout multiplier when all 3 reels match, keyed by symbol.
@@ -26,7 +27,12 @@ module.exports = {
       });
     }
 
-    const reels = [0, 0, 0].map(() => SYMBOLS[randInt(0, SYMBOLS.length - 1)]);
+    const reels = applyLuckToReels(
+      [0, 0, 0].map(() => SYMBOLS[randInt(0, SYMBOLS.length - 1)]),
+      user.luck,
+      SYMBOLS,
+      randInt
+    );
     const allMatch = reels[0] === reels[1] && reels[1] === reels[2];
     const twoMatch = !allMatch && (reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2]);
 

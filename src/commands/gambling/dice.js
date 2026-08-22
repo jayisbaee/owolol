@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
+const { luckyDiceRoll } = require('../../games/luckEngine');
 
 // Bet on whether your roll (1-6) beats the bot's roll (1-6). Ties refund the bet.
 module.exports = {
@@ -23,15 +24,14 @@ module.exports = {
       });
     }
 
-    const yourRoll = randInt(1, 6);
-    const houseRoll = randInt(1, 6);
+    const { outcome, yourRoll, houseRoll } = luckyDiceRoll(user.luck, randInt);
 
     let delta, resultText, color;
-    if (yourRoll > houseRoll) {
+    if (outcome === 'win') {
       delta = amount;
       resultText = `You won **${formatMoney(amount)}**!`;
       color = 0x57f287;
-    } else if (yourRoll < houseRoll) {
+    } else if (outcome === 'loss') {
       delta = -amount;
       resultText = `You lost **${formatMoney(amount)}**.`;
       color = 0xed4245;

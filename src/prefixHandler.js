@@ -12,6 +12,7 @@ const {
 } = require('./games/minesEngine');
 const blackjackCommand = require('./commands/gambling/blackjack');
 const minesCommand = require('./commands/gambling/mines');
+const { luckAdjustedChance, luckyDiceRoll, applyLuckToReels } = require('./games/luckEngine');
 
 // Maps short aliases to their real command name — resolved in messageCreate.js.
 const ALIASES = {
@@ -228,7 +229,7 @@ const handlers = {
     const amount = parsed.isAll ? fresh.balance : parsed.amount;
     if (amount <= 0) return message.reply('You have no balance left to bet.');
 
-    const result = Math.random() < 0.5 ? 'heads' : 'tails';
+    const result = Math.random() < luckAdjustedChance(0.5, fresh.luck) ? side : (side === 'heads' ? 'tails' : 'heads');
     const won = result === side;
     const updated = await db.addBalance(userId, won ? amount : -amount);
 
@@ -260,12 +261,11 @@ const handlers = {
     const amount = parsed.isAll ? fresh.balance : parsed.amount;
     if (amount <= 0) return message.reply('You have no balance left to bet.');
 
-    const yourRoll = randInt(1, 6);
-    const houseRoll = randInt(1, 6);
+    const { outcome, yourRoll, houseRoll } = luckyDiceRoll(fresh.luck, randInt);
     let delta, resultText, color;
-    if (yourRoll > houseRoll) {
+    if (outcome === 'win') {
       delta = amount; resultText = `You won **${formatMoney(amount)}**!`; color = 0x57f287;
-    } else if (yourRoll < houseRoll) {
+    } else if (outcome === 'loss') {
       delta = -amount; resultText = `You lost **${formatMoney(amount)}**.`; color = 0xed4245;
     } else {
       delta = 0; resultText = `It's a tie — your bet was refunded.`; color = 0xf5c518;
@@ -300,7 +300,12 @@ const handlers = {
     const amount = parsed.isAll ? fresh.balance : parsed.amount;
     if (amount <= 0) return message.reply('You have no balance left to bet.');
 
-    const reels = [0, 0, 0].map(() => SYMBOLS[randInt(0, SYMBOLS.length - 1)]);
+    const reels = applyLuckToReels(
+      [0, 0, 0].map(() => SYMBOLS[randInt(0, SYMBOLS.length - 1)]),
+      fresh.luck,
+      SYMBOLS,
+      randInt
+    );
     const allMatch = reels[0] === reels[1] && reels[1] === reels[2];
     const twoMatch = !allMatch && (reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2]);
 
@@ -378,6 +383,110 @@ const handlers = {
       .setColor(0x5865f2)
       .setDescription(`✅ Set **${finalTarget.username}**'s balance to **${formatMoney(updated.balance)}**.`);
     await message.reply({ embeds: [embed] });
+  },
+
+  async setluck(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+    const amountRaw = args.find((a) => /^-?\d+$/.test(a));
+    const amount = amountRaw !== undefined ? parseInt(amountRaw, 10) : null;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const finalTarget = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (amount === null) return message.reply(`Usage: \`${config.prefix}setluck <amount -100..100> [@user]\``);
+    if (!finalTarget) return message.reply('Could not find that user.');
+
+    const updated = await db.setLuck(finalTarget.id, amount);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setDescription(`🍀 Set **${finalTarget.username}**'s luck to **${updated.luck}**.`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async addluck(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+    const amountRaw = args.find((a) => /^-?\d+$/.test(a));
+    const amount = amountRaw !== undefined ? parseInt(amountRaw, 10) : null;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const finalTarget = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (amount === null) return message.reply(`Usage: \`${config.prefix}addluck <amount> [@user]\` (negative to remove)`);
+    if (!finalTarget) return message.reply('Could not find that user.');
+
+    const updated = await db.addLuck(finalTarget.id, amount);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setDescription(`🍀 Adjusted **${finalTarget.username}**'s luck by **${amount >= 0 ? '+' : ''}${amount}**. New luck: **${updated.luck}**.`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async removeluck(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+    const amountRaw = args.find((a) => /^\d+$/.test(a));
+    const amount = amountRaw !== undefined ? parseInt(amountRaw, 10) : null;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const finalTarget = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (amount === null) return message.reply(`Usage: \`${config.prefix}removeluck <amount> [@user]\``);
+    if (!finalTarget) return message.reply('Could not find that user.');
+
+    const updated = await db.addLuck(finalTarget.id, -amount);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setDescription(`🍀 Removed **${amount}** luck from **${finalTarget.username}**. New luck: **${updated.luck}**.`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async luck(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+    const target = (await resolveTarget(message, args)) || message.author;
+    const row = await db.getUser(target.id);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setDescription(`🍀 **${target.username}**'s luck: **${row.luck}** (range: -100 to 100, 0 is neutral)`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async resetalleconomy(message) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+
+    const userCount = await db.getUserCount();
+    const warnEmbed = new EmbedBuilder()
+      .setColor(0xed4245)
+      .setTitle('⚠️ WARNING: Full Economy Reset')
+      .setDescription(
+        `This will set **every tracked user's balance to 0** — that's **${userCount}** user${userCount === 1 ? '' : 's'}.\n\n` +
+        `This cannot be undone. Luck stats are not affected.\n\nAre you sure?`
+      );
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('reset_confirm').setLabel('Yes, reset everyone').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('reset_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+    );
+    const sent = await message.reply({ embeds: [warnEmbed], components: [row] });
+
+    let btnInteraction;
+    try {
+      btnInteraction = await sent.awaitMessageComponent({
+        filter: (i) => i.user.id === message.author.id,
+        time: 30_000,
+      });
+    } catch (_) {
+      await sent.edit({ content: '⏳ Confirmation timed out — nothing was reset.', embeds: [], components: [] }).catch(() => {});
+      return;
+    }
+
+    if (btnInteraction.customId === 'reset_cancel') {
+      await btnInteraction.update({ content: '❌ Cancelled — no changes made.', embeds: [], components: [] });
+      return;
+    }
+
+    await btnInteraction.deferUpdate();
+    const affected = await db.resetAllBalances();
+    await btnInteraction.editReply({
+      content: `✅ Done. Reset **${affected}** user${affected === 1 ? '' : 's'}' balances to 0.`,
+      embeds: [],
+      components: [],
+    });
   },
 
   async blackjack(message, args) {
@@ -593,7 +702,7 @@ const handlers = {
     const stake = fresh.balance;
     if (stake <= 0) return message.reply('You have no balance left to risk.');
 
-    const won = Math.random() < 0.5;
+    const won = Math.random() < luckAdjustedChance(0.5, fresh.luck);
     const delta = won ? stake : -stake;
     const updated = await db.addBalance(userId, delta);
 
@@ -620,7 +729,9 @@ const handlers = {
         `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
         `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
         `\`${p}mines <amount|all> [mines]\`, \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +
-        `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n\n` +
+        `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n` +
+        `\`${p}setluck <-100..100> [@user]\`, \`${p}addluck <amount> [@user]\`, \`${p}removeluck <amount> [@user]\`, \`${p}luck [@user]\`\n` +
+        `\`${p}resetalleconomy\` (wipes every balance to 0, requires confirmation)\n\n` +
         `Tip: type \`all\` instead of an amount on any gambling command to bet your whole balance (with a confirmation step).`
       );
     await message.reply({ embeds: [embed] });

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
+const { luckAdjustedChance } = require('../../games/luckEngine');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -29,8 +30,10 @@ module.exports = {
       });
     }
 
-    const result = Math.random() < 0.5 ? 'heads' : 'tails';
-    const won = result === side;
+    const winChance = luckAdjustedChance(0.5, user.luck);
+    const won = Math.random() < winChance;
+    const otherSide = side === 'heads' ? 'tails' : 'heads';
+    const result = won ? side : otherSide;
     const delta = won ? amount : -amount;
     const updated = await db.addBalance(userId, delta);
 

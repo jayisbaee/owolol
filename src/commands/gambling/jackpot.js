@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
+const { luckAdjustedChance } = require('../../games/luckEngine');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -55,7 +56,12 @@ module.exports = {
       return;
     }
 
-    const won = Math.random() < 0.5;
+    // Acknowledge the click immediately, before the database write, so a
+    // slow DB round-trip can't cause Discord to time out the interaction.
+    await btnInteraction.deferUpdate();
+
+    const winChance = luckAdjustedChance(0.5, fresh.luck);
+    const won = Math.random() < winChance;
     const delta = won ? stake : -stake;
     const updated = await db.addBalance(userId, delta);
 
@@ -69,6 +75,6 @@ module.exports = {
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
 
-    await btnInteraction.update({ embeds: [resultEmbed], components: [] });
+    await btnInteraction.editReply({ embeds: [resultEmbed], components: [] });
   },
 };
