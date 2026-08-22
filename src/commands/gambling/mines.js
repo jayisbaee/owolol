@@ -129,6 +129,7 @@ const minesCommand = {
 
       if (btnInteraction.customId === 'mines_cashout') {
         gameOver = true;
+        await btnInteraction.deferUpdate();
         const mult = multiplierFor(revealed.size, mines);
         const payout = Math.floor(amount * mult);
         const updated = await db.addBalance(userId, payout);
@@ -143,7 +144,7 @@ const minesCommand = {
         }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
 
         const finalComponents = buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
-        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        await btnInteraction.editReply({ embeds: [finalEmbed], components: finalComponents });
         collector.stop('cashout');
         return;
       }
@@ -174,6 +175,7 @@ const minesCommand = {
 
       if (revealed.size === safeCount) {
         gameOver = true;
+        await btnInteraction.deferUpdate();
         const payout = Math.floor(amount * MAX_MULTIPLIER);
         const updated = await db.addBalance(userId, payout);
 
@@ -187,7 +189,7 @@ const minesCommand = {
         }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
 
         const finalComponents = buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
-        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        await btnInteraction.editReply({ embeds: [finalEmbed], components: finalComponents });
         collector.stop('cleared');
         return;
       }

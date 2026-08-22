@@ -135,7 +135,8 @@ const blackjackCommand = {
         player.push(deck.pop());
         if (handValue(player) > 21) {
           collector.stop('bust');
-          await finish({ respond: (payload) => btnInteraction.update(payload), player, dealer, amount, userId, deck });
+          await btnInteraction.deferUpdate();
+          await finish({ respond: (payload) => btnInteraction.editReply(payload), player, dealer, amount, userId, deck });
           return;
         }
         await btnInteraction.update({
@@ -144,7 +145,8 @@ const blackjackCommand = {
         });
       } else if (btnInteraction.customId === 'bj_stand') {
         collector.stop('stand');
-        await finish({ respond: (payload) => btnInteraction.update(payload), player, dealer, amount, userId, deck });
+        await btnInteraction.deferUpdate();
+        await finish({ respond: (payload) => btnInteraction.editReply(payload), player, dealer, amount, userId, deck });
       }
     });
 

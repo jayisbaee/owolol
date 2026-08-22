@@ -430,8 +430,9 @@ const handlers = {
         player.push(deck.pop());
         if (handValue(player) > 21) {
           collector.stop('bust');
+          await btnInteraction.deferUpdate();
           await blackjackCommand.finish({
-            respond: (payload) => btnInteraction.update(payload),
+            respond: (payload) => btnInteraction.editReply(payload),
             player, dealer, amount, userId, deck,
           });
           return;
@@ -442,8 +443,9 @@ const handlers = {
         });
       } else if (btnInteraction.customId === 'bj_stand') {
         collector.stop('stand');
+        await btnInteraction.deferUpdate();
         await blackjackCommand.finish({
-          respond: (payload) => btnInteraction.update(payload),
+          respond: (payload) => btnInteraction.editReply(payload),
           player, dealer, amount, userId, deck,
         });
       }
@@ -501,6 +503,7 @@ const handlers = {
 
       if (btnInteraction.customId === 'mines_cashout') {
         gameOver = true;
+        await btnInteraction.deferUpdate();
         const mult = multiplierFor(revealed.size, mines);
         const payout = Math.floor(amount * mult);
         const updated = await db.addBalance(userId, payout);
@@ -510,7 +513,7 @@ const handlers = {
           statusText: `💰 Cashed out at **${mult.toFixed(2)}x** for **${formatMoney(payout)}**!`,
         }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
         const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
-        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        await btnInteraction.editReply({ embeds: [finalEmbed], components: finalComponents });
         collector.stop('cashout');
         return;
       }
@@ -537,6 +540,7 @@ const handlers = {
 
       if (revealed.size === safeCount) {
         gameOver = true;
+        await btnInteraction.deferUpdate();
         const payout = Math.floor(amount * MINES_MAX_MULTIPLIER);
         const updated = await db.addBalance(userId, payout);
 
@@ -545,7 +549,7 @@ const handlers = {
           statusText: `🏆 You cleared the board! Max payout: **${formatMoney(payout)}**!`,
         }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
         const finalComponents = minesCommand.buildGrid({ minePositions, revealed, gameOver: true, revealMines: true });
-        await btnInteraction.update({ embeds: [finalEmbed], components: finalComponents });
+        await btnInteraction.editReply({ embeds: [finalEmbed], components: finalComponents });
         collector.stop('cleared');
         return;
       }
