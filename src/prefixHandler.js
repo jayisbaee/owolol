@@ -104,6 +104,19 @@ const JOBS = [
   'sold lemonade', 'streamed for 3 hours', 'flipped burgers',
 ];
 
+const QUESTS = [
+  'rescued a cat stuck in a tree and the owner tipped you',
+  'delivered a mysterious package across town',
+  'solved a riddle for a traveling wizard',
+  'helped a farmer round up escaped chickens',
+  'found a lost wallet and returned it for a reward',
+  'guided some lost tourists to their hotel',
+  'fixed a leaky faucet for a grateful neighbor',
+  'won a local trivia night',
+  'helped move furniture for a new apartment',
+  'found some spare change while cleaning the couch',
+];
+
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 const MULTIPLIERS = { '🍒': 2, '🍋': 3, '🍇': 4, '🔔': 6, '⭐': 10, '💎': 25 };
 
@@ -161,6 +174,163 @@ const handlers = {
       .setColor(0x5865f2)
       .setDescription(`💼 You ${job} and earned **${formatMoney(earned)}**!`);
     await message.reply({ embeds: [embed] });
+  },
+
+  async quest(message) {
+    const userId = message.author.id;
+    const row = await db.getUser(userId);
+    const now = Date.now();
+    const last = row.last_quest ? new Date(row.last_quest).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.questCooldownMs) {
+      const remaining = config.questCooldownMs - elapsed;
+      return message.reply(`⏳ Your next quest isn't ready yet. Come back in **${msToTimeString(remaining)}**.`);
+    }
+
+    const earned = randInt(config.questMin, config.questMax);
+    const quest = QUESTS[randInt(0, QUESTS.length - 1)];
+    await db.addBalance(userId, earned);
+    await db.setLastQuest(userId, new Date(now));
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle('🗺️ Quest Complete!')
+      .setDescription(`You ${quest} and earned **${formatMoney(earned)}**!`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async rob(message, args) {
+    const target = await resolveTarget(message, args);
+    if (!target) return message.reply(`Usage: \`${config.prefix}rob @user\``);
+
+    const userId = message.author.id;
+    if (target.id === userId) return message.reply("You can't rob yourself.");
+    if (target.bot) return message.reply("You can't rob a bot.");
+
+    const robber = await db.getUser(userId);
+    const now = Date.now();
+    const last = robber.last_rob ? new Date(robber.last_rob).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.robCooldownMs) {
+      const remaining = config.robCooldownMs - elapsed;
+      return message.reply(`⏳ You're laying low. Try robbing again in **${msToTimeString(remaining)}**.`);
+    }
+
+    const victim = await db.getUser(target.id);
+    if (victim.balance < config.robMinTargetBalance) {
+      return message.reply(`**${target.username}** doesn't have enough coins to be worth robbing (needs at least ${formatMoney(config.robMinTargetBalance)}).`);
+    }
+
+    await db.setLastRob(userId, new Date(now));
+
+    const winChance = luckAdjustedChance(0.4, robber.luck);
+    const success = Math.random() < winChance;
+
+    if (success) {
+      const stealPct = config.robMinStealPct + Math.random() * (config.robMaxStealPct - config.robMinStealPct);
+      const stolen = Math.max(1, Math.floor(victim.balance * stealPct));
+      await db.addBalance(target.id, -stolen);
+      const updatedRobber = await db.addBalance(userId, stolen);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle('🕵️ Robbery Successful!')
+        .setDescription(`You snuck up on **${target.username}** and got away with **${formatMoney(stolen)}**!`)
+        .setFooter({ text: `New balance: ${formatMoney(updatedRobber.balance)}` });
+      await message.reply({ embeds: [embed] });
+    } else {
+      const penalty = Math.max(1, Math.floor(robber.balance * config.robFailPenaltyPct));
+      const updatedRobber = await db.addBalance(userId, -penalty);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle('🚨 Caught Red-Handed!')
+        .setDescription(`You got caught trying to rob **${target.username}** and paid a fine of **${formatMoney(penalty)}**.`)
+        .setFooter({ text: `New balance: ${formatMoney(updatedRobber.balance)}` });
+      await message.reply({ embeds: [embed] });
+    }
+  },
+
+  async battle(message, args) {
+    const target = await resolveTarget(message, args);
+    const amount = parseAmount(args[1]);
+
+    if (!target || !amount) return message.reply(`Usage: \`${config.prefix}battle @user <amount>\``);
+
+    const challengerId = message.author.id;
+    if (target.id === challengerId) return message.reply("You can't battle yourself.");
+    if (target.bot) return message.reply("You can't battle a bot.");
+
+    const challenger = await db.getUser(challengerId);
+    if (challenger.balance < amount) {
+      return message.reply(`You don't have enough coins. Your balance: ${formatMoney(challenger.balance)}`);
+    }
+    const defender = await db.getUser(target.id);
+    if (defender.balance < amount) {
+      return message.reply(`**${target.username}** doesn't have enough coins to match that wager.`);
+    }
+
+    const challengeEmbed = new EmbedBuilder()
+      .setColor(0xf5c518)
+      .setTitle('⚔️ Battle Challenge!')
+      .setDescription(
+        `**${message.author.username}** has challenged **${target.username}** to a battle for **${formatMoney(amount)}**!\n\n` +
+        `${target}, do you accept?`
+      );
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('battle_accept').setLabel('⚔️ Accept').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('battle_decline').setLabel('Decline').setStyle(ButtonStyle.Secondary)
+    );
+
+    const sent = await message.reply({ embeds: [challengeEmbed], components: [row] });
+
+    let btnInteraction;
+    try {
+      btnInteraction = await sent.awaitMessageComponent({
+        filter: (i) => i.user.id === target.id,
+        time: 60_000,
+      });
+    } catch (_) {
+      await sent.edit({ content: `⏳ **${target.username}** didn't respond in time. Battle cancelled.`, embeds: [], components: [] }).catch(() => {});
+      return;
+    }
+
+    if (btnInteraction.customId === 'battle_decline') {
+      await btnInteraction.update({ content: `❌ **${target.username}** declined the battle.`, embeds: [], components: [] });
+      return;
+    }
+
+    await btnInteraction.deferUpdate();
+
+    const freshChallenger = await db.getUser(challengerId);
+    const freshDefender = await db.getUser(target.id);
+    if (freshChallenger.balance < amount || freshDefender.balance < amount) {
+      await btnInteraction.editReply({ content: '❌ One of you no longer has enough coins for this wager. Battle cancelled.', embeds: [], components: [] });
+      return;
+    }
+
+    await db.addBalance(challengerId, -amount);
+    await db.addBalance(target.id, -amount);
+
+    const luckDiff = freshChallenger.luck - freshDefender.luck;
+    const challengerWinChance = luckAdjustedChance(0.5, luckDiff);
+    const challengerWins = Math.random() < challengerWinChance;
+
+    const winnerId = challengerWins ? challengerId : target.id;
+    const winnerName = challengerWins ? message.author.username : target.username;
+    const loserName = challengerWins ? target.username : message.author.username;
+    const pot = amount * 2;
+
+    const updatedWinner = await db.addBalance(winnerId, pot);
+
+    const resultEmbed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle('⚔️ Battle Result')
+      .setDescription(`**${winnerName}** defeated **${loserName}** and won the pot of **${formatMoney(pot)}**!`)
+      .setFooter({ text: `${winnerName}'s new balance: ${formatMoney(updatedWinner.balance)}` });
+
+    await btnInteraction.editReply({ embeds: [resultEmbed], components: [] });
   },
 
   async give(message, args) {
@@ -725,7 +895,8 @@ const handlers = {
       .setTitle('📖 Commands')
       .setDescription(
         `Both \`/slash\` commands and \`${p}prefix\` commands work.\n\n` +
-        `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n\n` +
+        `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
+        `\`${p}rob @user\` (risky — chance to fail and pay a fine), \`${p}battle @user <amount>\` (PvP wager, winner takes all)\n\n` +
         `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
         `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
         `\`${p}mines <amount|all> [mines]\`, \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +

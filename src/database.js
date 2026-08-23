@@ -24,6 +24,8 @@ async function ensureSchema() {
   // Adds the luck column to a database that already had the users table
   // created before this feature existed — harmless no-op if it's already there.
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS luck INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_quest TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob TIMESTAMPTZ;`);
 }
 
 async function getUser(userId) {
@@ -65,6 +67,14 @@ async function setLastDaily(userId, date) {
 
 async function setLastWork(userId, date) {
   await pool.query(`UPDATE users SET last_work = $2 WHERE user_id = $1`, [userId, date]);
+}
+
+async function setLastQuest(userId, date) {
+  await pool.query(`UPDATE users SET last_quest = $2 WHERE user_id = $1`, [userId, date]);
+}
+
+async function setLastRob(userId, date) {
+  await pool.query(`UPDATE users SET last_rob = $2 WHERE user_id = $1`, [userId, date]);
 }
 
 async function getLeaderboard(limit = 10) {
@@ -121,6 +131,8 @@ module.exports = {
   setBalance,
   setLastDaily,
   setLastWork,
+  setLastQuest,
+  setLastRob,
   getLeaderboard,
   setLuck,
   addLuck,
