@@ -26,4 +26,14 @@ module.exports = {
   robMinStealPct: 0.10,
   robMaxStealPct: 0.25,
   robFailPenaltyPct: 0.10, // robber loses this % of their own balance if caught
+  begMin: 5,
+  begMax: 60,
+  begCooldownMs: 5 * 60 * 1000, // 5 minutes — very fast, small filler income
+  begNothingChance: 0.25, // chance of getting nothing at all, for flavor
+  crimeMin: 300,
+  crimeMax: 700,
+  crimeCooldownMs: 15 * 60 * 1000, // 15 minutes
+  crimeSuccessChance: 0.55,
+  crimeFailPenaltyPct: 0.15, // % of current balance lost as a "fine" on failure
+  questCrateChance: 0.4, // chance /quest also drops a random-rarity crate
 };

@@ -26,6 +26,13 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS luck INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_quest TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_beg TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_crime TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_common INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_uncommon INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_rare INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_epic INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_legendary INTEGER NOT NULL DEFAULT 0;`);
 }
 
 async function getUser(userId) {
@@ -77,6 +84,14 @@ async function setLastRob(userId, date) {
   await pool.query(`UPDATE users SET last_rob = $2 WHERE user_id = $1`, [userId, date]);
 }
 
+async function setLastBeg(userId, date) {
+  await pool.query(`UPDATE users SET last_beg = $2 WHERE user_id = $1`, [userId, date]);
+}
+
+async function setLastCrime(userId, date) {
+  await pool.query(`UPDATE users SET last_crime = $2 WHERE user_id = $1`, [userId, date]);
+}
+
 async function getLeaderboard(limit = 10) {
   const { rows } = await pool.query(
     `SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT $1`,
@@ -123,6 +138,29 @@ async function getUserCount() {
   return rows[0].count;
 }
 
+// Whitelisted column lookup — never build this from raw user input, since it's
+// interpolated directly into SQL below. Rarity keys must match src/games/crateEngine.js.
+const CRATE_COLUMNS = {
+  common: 'crates_common',
+  uncommon: 'crates_uncommon',
+  rare: 'crates_rare',
+  epic: 'crates_epic',
+  legendary: 'crates_legendary',
+};
+
+// Adds (or removes, with a negative amount) crates of a given rarity for a
+// user. Never lets the count go below 0. Returns the updated row.
+async function addCrates(userId, rarityKey, amount) {
+  const column = CRATE_COLUMNS[rarityKey];
+  if (!column) throw new Error(`Unknown crate rarity: ${rarityKey}`);
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users SET ${column} = GREATEST(${column} + $2, 0) WHERE user_id = $1 RETURNING *`,
+    [userId, amount]
+  );
+  return rows[0];
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -133,10 +171,13 @@ module.exports = {
   setLastWork,
   setLastQuest,
   setLastRob,
+  setLastBeg,
+  setLastCrime,
   getLeaderboard,
   setLuck,
   addLuck,
   resetAllBalances,
   resetAllLuck,
   getUserCount,
+  addCrates,
 };

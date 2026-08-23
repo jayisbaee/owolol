@@ -13,6 +13,12 @@ const {
 const blackjackCommand = require('./commands/gambling/blackjack');
 const minesCommand = require('./commands/gambling/mines');
 const { luckAdjustedChance, luckyDiceRoll, applyLuckToReels } = require('./games/luckEngine');
+const {
+  RARITIES: CRATE_RARITIES,
+  RARITY_KEYS: CRATE_RARITY_KEYS,
+  pickWeightedRarity,
+  luckWeightedReward,
+} = require('./games/crateEngine');
 
 // Maps short aliases to their real command name — resolved in messageCreate.js.
 const ALIASES = {
@@ -117,6 +123,33 @@ const QUESTS = [
   'found some spare change while cleaning the couch',
 ];
 
+const BEGGARS = [
+  'a kind stranger', 'a friendly cashier', 'a passing jogger', 'your neighbor',
+  'a street performer', 'a coffee shop barista', 'a generous tourist', 'an old friend',
+];
+
+const NOTHING_LINES = [
+  'Nobody had any spare change for you.',
+  'You got a lot of awkward stares and nothing else.',
+  'A dog barked at you. No money though.',
+  'Someone said "get a job" and walked off.',
+];
+
+const CRIMES = [
+  "picked a stranger's pocket",
+  'hacked into a vending machine',
+  'ran a small con on a busy street',
+  'snuck into a fancy event and grabbed some cash',
+  'pulled off a quick scheme downtown',
+];
+
+const CAUGHT_LINES = [
+  'A security guard spotted you.',
+  'You tripped an alarm.',
+  'Someone recognized you and called it out.',
+  'You got cornered by the police.',
+];
+
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 const MULTIPLIERS = { '🍒': 2, '🍋': 3, '🍇': 4, '🔔': 6, '⭐': 10, '💎': 25 };
 
@@ -147,10 +180,14 @@ const handlers = {
     }
 
     await db.addBalance(userId, config.dailyAmount);
+    await db.addCrates(userId, 'common', 1);
     await db.setLastDaily(userId, new Date(now));
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
-      .setDescription(`✅ You claimed your daily and received **${formatMoney(config.dailyAmount)}**!`);
+      .setDescription(
+        `✅ You claimed your daily and received **${formatMoney(config.dailyAmount)}**!\n` +
+        `${CRATE_RARITIES.common.emoji} You also got a **Common Crate**! Use \`${config.prefix}opencrate common\` to open it.`
+      );
     await message.reply({ embeds: [embed] });
   },
 
@@ -192,10 +229,158 @@ const handlers = {
     const quest = QUESTS[randInt(0, QUESTS.length - 1)];
     await db.addBalance(userId, earned);
     await db.setLastQuest(userId, new Date(now));
+
+    let crateLine = '';
+    if (Math.random() < config.questCrateChance) {
+      const rarityKey = pickWeightedRarity();
+      const rarity = CRATE_RARITIES[rarityKey];
+      await db.addCrates(userId, rarityKey, 1);
+      crateLine = `\n${rarity.emoji} You also found a **${rarity.label} Crate**!`;
+    }
+
     const embed = new EmbedBuilder()
       .setColor(0x9b59b6)
       .setTitle('🗺️ Quest Complete!')
-      .setDescription(`You ${quest} and earned **${formatMoney(earned)}**!`);
+      .setDescription(`You ${quest} and earned **${formatMoney(earned)}**!${crateLine}`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async beg(message) {
+    const userId = message.author.id;
+    const row = await db.getUser(userId);
+    const now = Date.now();
+    const last = row.last_beg ? new Date(row.last_beg).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.begCooldownMs) {
+      const remaining = config.begCooldownMs - elapsed;
+      return message.reply(`⏳ Give it a moment. You can beg again in **${msToTimeString(remaining)}**.`);
+    }
+
+    await db.setLastBeg(userId, new Date(now));
+
+    if (Math.random() < config.begNothingChance) {
+      const line = NOTHING_LINES[randInt(0, NOTHING_LINES.length - 1)];
+      const embed = new EmbedBuilder().setColor(0x99aab5).setTitle('🙏 Begging').setDescription(line);
+      return message.reply({ embeds: [embed] });
+    }
+
+    const earned = randInt(config.begMin, config.begMax);
+    const giver = BEGGARS[randInt(0, BEGGARS.length - 1)];
+    const updated = await db.addBalance(userId, earned);
+    const embed = new EmbedBuilder()
+      .setColor(0x99aab5)
+      .setTitle('🙏 Begging')
+      .setDescription(`${giver} felt bad for you and gave you **${formatMoney(earned)}**.`)
+      .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async crime(message) {
+    const userId = message.author.id;
+    const row = await db.getUser(userId);
+    const now = Date.now();
+    const last = row.last_crime ? new Date(row.last_crime).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.crimeCooldownMs) {
+      const remaining = config.crimeCooldownMs - elapsed;
+      return message.reply(`⏳ Lay low a bit longer. You can try again in **${msToTimeString(remaining)}**.`);
+    }
+
+    await db.setLastCrime(userId, new Date(now));
+
+    const successChance = luckAdjustedChance(config.crimeSuccessChance, row.luck);
+    const success = Math.random() < successChance;
+
+    if (success) {
+      const earned = randInt(config.crimeMin, config.crimeMax);
+      const crime = CRIMES[randInt(0, CRIMES.length - 1)];
+      const updated = await db.addBalance(userId, earned);
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle('🎭 Crime Successful!')
+        .setDescription(`You ${crime} and got away with **${formatMoney(earned)}**!`)
+        .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+      await message.reply({ embeds: [embed] });
+    } else {
+      const penalty = Math.max(1, Math.floor(row.balance * config.crimeFailPenaltyPct));
+      const updated = await db.addBalance(userId, -penalty);
+      const line = CAUGHT_LINES[randInt(0, CAUGHT_LINES.length - 1)];
+      const embed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle('🚨 Busted!')
+        .setDescription(`${line} You paid a fine of **${formatMoney(penalty)}**.`)
+        .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+      await message.reply({ embeds: [embed] });
+    }
+  },
+
+  async crates(message, args) {
+    const target = (await resolveTarget(message, args)) || message.author;
+    const row = await db.getUser(target.id);
+
+    const lines = CRATE_RARITY_KEYS.map((key) => {
+      const rarity = CRATE_RARITIES[key];
+      const count = row[`crates_${key}`] || 0;
+      return `${rarity.emoji} **${rarity.label}**: ${count}`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setAuthor({ name: `${target.username}'s Crates`, iconURL: target.displayAvatarURL() })
+      .setDescription(lines.join('\n'))
+      .setFooter({ text: `Use ${config.prefix}opencrate <rarity> to open one` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async opencrate(message, args) {
+    const rarityKey = (args[0] || '').toLowerCase();
+    const rarity = CRATE_RARITIES[rarityKey];
+    if (!rarity) {
+      return message.reply(`Usage: \`${config.prefix}opencrate <${CRATE_RARITY_KEYS.join('|')}>\``);
+    }
+
+    const userId = message.author.id;
+    const row = await db.getUser(userId);
+    const currentCount = row[`crates_${rarityKey}`] || 0;
+
+    if (currentCount < 1) {
+      return message.reply(`You don't have any **${rarity.label}** crates to open.`);
+    }
+
+    await db.addCrates(userId, rarityKey, -1);
+    const reward = luckWeightedReward(rarity.min, rarity.max, row.luck);
+    const updated = await db.addBalance(userId, reward);
+
+    const embed = new EmbedBuilder()
+      .setColor(rarity.color)
+      .setTitle(`${rarity.emoji} ${rarity.label} Crate Opened!`)
+      .setDescription(`You found **${formatMoney(reward)}** inside!`)
+      .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async givecrate(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+
+    const rarityKey = (args.find((a) => CRATE_RARITY_KEYS.includes(a.toLowerCase())) || '').toLowerCase();
+    const rarity = CRATE_RARITIES[rarityKey];
+    const amountRaw = args.find((a) => /^\d+$/.test(a));
+    const amount = amountRaw !== undefined ? parseInt(amountRaw, 10) : null;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const finalTarget = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (!rarity || !amount) {
+      return message.reply(`Usage: \`${config.prefix}givecrate <${CRATE_RARITY_KEYS.join('|')}> <amount> [@user]\``);
+    }
+    if (!finalTarget) return message.reply('Could not find that user.');
+
+    const updated = await db.addCrates(finalTarget.id, rarityKey, amount);
+    const newCount = updated[`crates_${rarityKey}`];
+    const embed = new EmbedBuilder()
+      .setColor(rarity.color)
+      .setDescription(`${rarity.emoji} Gave **${amount}x ${rarity.label} Crate** to **${finalTarget.username}**. They now have **${newCount}**.`);
     await message.reply({ embeds: [embed] });
   },
 
@@ -895,13 +1080,16 @@ const handlers = {
       .setTitle('📖 Commands')
       .setDescription(
         `Both \`/slash\` commands and \`${p}prefix\` commands work.\n\n` +
-        `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
+        `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}beg\`, \`${p}crime\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
         `\`${p}rob @user\` (risky — chance to fail and pay a fine), \`${p}battle @user <amount>\` (PvP wager, winner takes all)\n\n` +
+        `**Crates**\n\`${p}crates [@user]\` (view inventory), \`${p}opencrate <rarity>\`\n` +
+        `Rarities: Common, Uncommon, Rare, Epic, Legendary. Earned from \`${p}daily\` (guaranteed Common) and \`${p}quest\` (chance of any rarity).\n\n` +
         `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
         `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
         `\`${p}mines <amount|all> [mines]\`, \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +
         `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n` +
         `\`${p}setluck <-100..100> [@user]\`, \`${p}addluck <amount> [@user]\`, \`${p}removeluck <amount> [@user]\`, \`${p}luck [@user]\`\n` +
+        `\`${p}givecrate <rarity> <amount> [@user]\` (luck also biases crate rewards — this is how you rig them)\n` +
         `\`${p}resetalleconomy\` (wipes every balance to 0, requires confirmation)\n\n` +
         `Tip: type \`all\` instead of an amount on any gambling command to bet your whole balance (with a confirmation step).`
       );
