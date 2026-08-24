@@ -36,4 +36,12 @@ module.exports = {
   crimeSuccessChance: 0.55,
   crimeFailPenaltyPct: 0.15, // % of current balance lost as a "fine" on failure
   questCrateChance: 0.4, // chance /quest also drops a random-rarity crate
+  luckUpgradeCost: 5000,
+  luckUpgradeAmount: 5, // luck gained per purchase (capped at 100 overall)
+  drillCost: 2000,
+  vaultbreakCooldownMs: 45 * 60 * 1000, // 45 minutes
+  vaultbreakMinTargetBank: 200, // victim's bank needs at least this much to be worth cracking
+  vaultbreakSuccessChance: 0.3, // lower than /rob — banks are meant to be safer
+  vaultbreakMinStealPct: 0.05,
+  vaultbreakMaxStealPct: 0.15,
 };

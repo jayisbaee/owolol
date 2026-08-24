@@ -19,6 +19,7 @@ const {
   pickWeightedRarity,
   luckWeightedReward,
 } = require('./games/crateEngine');
+const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEngine');
 
 // Maps short aliases to their real command name — resolved in messageCreate.js.
 const ALIASES = {
@@ -165,6 +166,154 @@ const handlers = {
         { name: 'Bank', value: formatMoney(row.bank), inline: true }
       );
     await message.reply({ embeds: [embed] });
+  },
+
+  async deposit(message, args) {
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+    const raw = (args[0] || '').toLowerCase();
+    const amount = raw === 'all' ? user.balance : parseAmount(args[0]);
+
+    if (!amount) return message.reply(`Usage: \`${config.prefix}deposit <amount|all>\``);
+    if (user.balance < amount) {
+      return message.reply(`You don't have that much in your wallet. Wallet balance: ${formatMoney(user.balance)}`);
+    }
+    if (amount <= 0) return message.reply('You have nothing to deposit.');
+
+    await db.addBalance(userId, -amount);
+    const updated = await db.addBank(userId, amount);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setDescription(`🏦 Deposited **${formatMoney(amount)}** into your bank.`)
+      .addFields(
+        { name: 'Wallet', value: formatMoney(updated.balance), inline: true },
+        { name: 'Bank', value: formatMoney(updated.bank), inline: true }
+      );
+    await message.reply({ embeds: [embed] });
+  },
+
+  async withdraw(message, args) {
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+    const raw = (args[0] || '').toLowerCase();
+    const amount = raw === 'all' ? user.bank : parseAmount(args[0]);
+
+    if (!amount) return message.reply(`Usage: \`${config.prefix}withdraw <amount|all>\``);
+    if (user.bank < amount) {
+      return message.reply(`You don't have that much in your bank. Bank balance: ${formatMoney(user.bank)}`);
+    }
+    if (amount <= 0) return message.reply('You have nothing to withdraw.');
+
+    await db.addBank(userId, -amount);
+    const updated = await db.addBalance(userId, amount);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setDescription(`🏦 Withdrew **${formatMoney(amount)}** from your bank.`)
+      .addFields(
+        { name: 'Wallet', value: formatMoney(updated.balance), inline: true },
+        { name: 'Bank', value: formatMoney(updated.bank), inline: true }
+      );
+    await message.reply({ embeds: [embed] });
+  },
+
+  async shop(message) {
+    const lines = SHOP_ITEM_KEYS.map((key) => {
+      const item = SHOP_ITEMS[key];
+      return `${item.emoji} **${item.label}** — ${formatMoney(item.cost)}\n${item.description}\n*Buy with:* \`${config.prefix}buy ${key}\``;
+    });
+    const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🛒 Shop').setDescription(lines.join('\n\n'));
+    await message.reply({ embeds: [embed] });
+  },
+
+  async buy(message, args) {
+    const itemKey = (args[0] || '').toLowerCase();
+    const item = SHOP_ITEMS[itemKey];
+    const amount = args[1] ? parseInt(args[1], 10) : 1;
+
+    if (!item || !amount || amount < 1) {
+      return message.reply(`Usage: \`${config.prefix}buy <${SHOP_ITEM_KEYS.join('|')}> [amount]\``);
+    }
+
+    const totalCost = item.cost * amount;
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+
+    if (user.balance < totalCost) {
+      return message.reply(`You don't have enough coins. **${amount}x ${item.label}** costs ${formatMoney(totalCost)}, but your wallet has ${formatMoney(user.balance)}.`);
+    }
+
+    await db.addBalance(userId, -totalCost);
+
+    let confirmationLine;
+    if (itemKey === 'luck') {
+      const luckGain = config.luckUpgradeAmount * amount;
+      const updated = await db.addLuck(userId, luckGain);
+      confirmationLine = `🍀 Bought **${amount}x Luck Upgrade** for ${formatMoney(totalCost)}. Your luck is now **${updated.luck}**.`;
+    } else if (itemKey === 'drill') {
+      const updated = await db.addDrills(userId, amount);
+      confirmationLine = `🔩 Bought **${amount}x Electric Drill** for ${formatMoney(totalCost)}. You now have **${updated.drills}**.`;
+    } else {
+      confirmationLine = `Bought **${amount}x ${item.label}** for ${formatMoney(totalCost)}.`;
+    }
+
+    const embed = new EmbedBuilder().setColor(0x57f287).setDescription(confirmationLine);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async vaultbreak(message, args) {
+    const target = await resolveTarget(message, args);
+    if (!target) return message.reply(`Usage: \`${config.prefix}vaultbreak @user\``);
+
+    const userId = message.author.id;
+    if (target.id === userId) return message.reply("You can't break into your own vault.");
+    if (target.bot) return message.reply("You can't rob a bot.");
+
+    const attacker = await db.getUser(userId);
+    if (attacker.drills < 1) {
+      return message.reply(`You need an **Electric Drill** to attempt this. Buy one with \`${config.prefix}buy drill\` (costs ${formatMoney(config.drillCost)}).`);
+    }
+
+    const now = Date.now();
+    const last = attacker.last_vaultbreak ? new Date(attacker.last_vaultbreak).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.vaultbreakCooldownMs) {
+      const remaining = config.vaultbreakCooldownMs - elapsed;
+      return message.reply(`⏳ Your drill needs to cool down. Try again in **${msToTimeString(remaining)}**.`);
+    }
+
+    const victim = await db.getUser(target.id);
+    if (victim.bank < config.vaultbreakMinTargetBank) {
+      return message.reply(`**${target.username}**'s vault doesn't have enough in it to be worth cracking (needs at least ${formatMoney(config.vaultbreakMinTargetBank)}).`);
+    }
+
+    await db.addDrills(userId, -1);
+    await db.setLastVaultbreak(userId, new Date(now));
+
+    const successChance = luckAdjustedChance(config.vaultbreakSuccessChance, attacker.luck);
+    const success = Math.random() < successChance;
+
+    if (success) {
+      const stealPct = config.vaultbreakMinStealPct + Math.random() * (config.vaultbreakMaxStealPct - config.vaultbreakMinStealPct);
+      const stolen = Math.max(1, Math.floor(victim.bank * stealPct));
+      await db.addBank(target.id, -stolen);
+      const updatedAttacker = await db.addBalance(userId, stolen);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle('🔩 Vault Cracked!')
+        .setDescription(`Your drill broke through **${target.username}**'s vault and you got away with **${formatMoney(stolen)}**!`)
+        .setFooter({ text: `New wallet balance: ${formatMoney(updatedAttacker.balance)}` });
+      await message.reply({ embeds: [embed] });
+    } else {
+      const embed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle('🚨 Vault Break Failed!')
+        .setDescription(`The drill broke and the vault held. **${target.username}**'s bank is untouched. You'll need another drill to try again.`);
+      await message.reply({ embeds: [embed] });
+    }
   },
 
   async daily(message) {
@@ -1082,6 +1231,9 @@ const handlers = {
         `Both \`/slash\` commands and \`${p}prefix\` commands work.\n\n` +
         `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}beg\`, \`${p}crime\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
         `\`${p}rob @user\` (risky — chance to fail and pay a fine), \`${p}battle @user <amount>\` (PvP wager, winner takes all)\n\n` +
+        `**Bank**\n\`${p}deposit <amount|all>\`, \`${p}withdraw <amount|all>\` — banked coins are safe from \`${p}rob\` (but not \`${p}vaultbreak\`)\n\n` +
+        `**Shop**\n\`${p}shop\` (view items), \`${p}buy <item> [amount]\` — buy Luck Upgrades or Electric Drills\n` +
+        `\`${p}vaultbreak @user\` — spend a drill for a chance to steal from someone's bank (riskier and rarer than \`${p}rob\`)\n\n` +
         `**Crates**\n\`${p}crates [@user]\` (view inventory), \`${p}opencrate <rarity>\`\n` +
         `Rarities: Common, Uncommon, Rare, Epic, Legendary. Earned from \`${p}daily\` (guaranteed Common) and \`${p}quest\` (chance of any rarity).\n\n` +
         `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +

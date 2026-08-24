@@ -33,6 +33,8 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_rare INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_epic INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_legendary INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS drills INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_vaultbreak TIMESTAMPTZ;`);
 }
 
 async function getUser(userId) {
@@ -66,6 +68,36 @@ async function setBalance(userId, amount) {
     [userId, Math.max(0, amount)]
   );
   return rows[0];
+}
+
+// Adds (or subtracts, with a negative amount) to a user's bank. Never lets
+// bank go below 0. Returns the updated row. Bank is untouched by /rob and
+// only vulnerable to /vaultbreak, which requires an electric drill.
+async function addBank(userId, amount) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET bank = GREATEST(bank + $2, 0)
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId, amount]
+  );
+  return rows[0];
+}
+
+// Adds (or removes, with a negative amount) electric drills — consumable
+// items bought from the shop and spent one-per-attempt on /vaultbreak.
+async function addDrills(userId, amount) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users SET drills = GREATEST(drills + $2, 0) WHERE user_id = $1 RETURNING *`,
+    [userId, amount]
+  );
+  return rows[0];
+}
+
+async function setLastVaultbreak(userId, date) {
+  await pool.query(`UPDATE users SET last_vaultbreak = $2 WHERE user_id = $1`, [userId, date]);
 }
 
 async function setLastDaily(userId, date) {
@@ -167,12 +199,15 @@ module.exports = {
   getUser,
   addBalance,
   setBalance,
+  addBank,
+  addDrills,
   setLastDaily,
   setLastWork,
   setLastQuest,
   setLastRob,
   setLastBeg,
   setLastCrime,
+  setLastVaultbreak,
   getLeaderboard,
   setLuck,
   addLuck,
