@@ -45,4 +45,6 @@ module.exports = {
   vaultbreakMinStealPct: 0.05,
   vaultbreakMaxStealPct: 0.15,
   huntCooldownMs: 10 * 60 * 1000, // 10 minutes — fast, no penalty on loss
+  raffleJackpot: 100_000_000_000, // 100 billion — the whole point of tickets
+  raffleWinChance: 1 / 9,
 };

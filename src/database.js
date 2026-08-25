@@ -36,6 +36,7 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS drills INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_vaultbreak TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_hunt TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tickets INTEGER NOT NULL DEFAULT 0;`);
 }
 
 async function getUser(userId) {
@@ -198,6 +199,17 @@ async function addCrates(userId, rarityKey, amount) {
   return rows[0];
 }
 
+// Adds (or removes, with a negative amount) raffle tickets — a separate
+// currency spent one-per-play on /raffle. Never lets the count go below 0.
+async function addTickets(userId, amount) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users SET tickets = GREATEST(tickets + $2, 0) WHERE user_id = $1 RETURNING *`,
+    [userId, amount]
+  );
+  return rows[0];
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -221,4 +233,5 @@ module.exports = {
   resetAllLuck,
   getUserCount,
   addCrates,
+  addTickets,
 };

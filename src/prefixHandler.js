@@ -1,4 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const ICONS = require('./games/icons');
 const db = require('./database');
 const config = require('./config');
 const { formatMoney, msToTimeString, isAdmin, randInt } = require('./utils/economyUtils');
@@ -162,6 +163,7 @@ const handlers = {
     const row = await db.getUser(target.id);
     const embed = new EmbedBuilder()
       .setColor(0xf5c518)
+      .setThumbnail(ICONS.balance)
       .setAuthor({ name: target.username, iconURL: target.displayAvatarURL() })
       .addFields(
         { name: 'Wallet', value: formatMoney(row.balance), inline: true },
@@ -187,6 +189,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.bank)
       .setDescription(`🏦 Deposited **${formatMoney(amount)}** into your bank.`)
       .addFields(
         { name: 'Wallet', value: formatMoney(updated.balance), inline: true },
@@ -212,6 +215,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.bank)
       .setDescription(`🏦 Withdrew **${formatMoney(amount)}** from your bank.`)
       .addFields(
         { name: 'Wallet', value: formatMoney(updated.balance), inline: true },
@@ -225,7 +229,7 @@ const handlers = {
       const item = SHOP_ITEMS[key];
       return `${item.emoji} **${item.label}** — ${formatMoney(item.cost)}\n${item.description}\n*Buy with:* \`${config.prefix}buy ${key}\``;
     });
-    const embed = new EmbedBuilder().setColor(0x5865f2).setTitle('🛒 Shop').setDescription(lines.join('\n\n'));
+    const embed = new EmbedBuilder().setColor(0x5865f2).setThumbnail(ICONS.shop).setTitle('🛒 Shop').setDescription(lines.join('\n\n'));
     await message.reply({ embeds: [embed] });
   },
 
@@ -260,7 +264,7 @@ const handlers = {
       confirmationLine = `Bought **${amount}x ${item.label}** for ${formatMoney(totalCost)}.`;
     }
 
-    const embed = new EmbedBuilder().setColor(0x57f287).setDescription(confirmationLine);
+    const embed = new EmbedBuilder().setColor(0x57f287).setThumbnail(ICONS.shop).setDescription(confirmationLine);
     await message.reply({ embeds: [embed] });
   },
 
@@ -305,6 +309,7 @@ const handlers = {
 
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
+        .setThumbnail(ICONS.vaultbreak)
         .setTitle('🔩 Vault Cracked!')
         .setDescription(`Your drill broke through **${target.username}**'s vault and you got away with **${formatMoney(stolen)}**!`)
         .setFooter({ text: `New wallet balance: ${formatMoney(updatedAttacker.balance)}` });
@@ -312,6 +317,7 @@ const handlers = {
     } else {
       const embed = new EmbedBuilder()
         .setColor(0xed4245)
+        .setThumbnail(ICONS.vaultbreak)
         .setTitle('🚨 Vault Break Failed!')
         .setDescription(`The drill broke and the vault held. **${target.username}**'s bank is untouched. You'll need another drill to try again.`);
       await message.reply({ embeds: [embed] });
@@ -335,6 +341,7 @@ const handlers = {
     await db.setLastDaily(userId, new Date(now));
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.daily)
       .setDescription(
         `✅ You claimed your daily and received **${formatMoney(config.dailyAmount)}**!\n` +
         `${CRATE_RARITIES.common.emoji} You also got a **Common Crate**! Use \`${config.prefix}opencrate common\` to open it.`
@@ -360,6 +367,7 @@ const handlers = {
     await db.setLastWork(userId, new Date(now));
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.work)
       .setDescription(`💼 You ${job} and earned **${formatMoney(earned)}**!`);
     await message.reply({ embeds: [embed] });
   },
@@ -391,6 +399,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x9b59b6)
+      .setThumbnail(ICONS.quest)
       .setTitle('🗺️ Quest Complete!')
       .setDescription(`You ${quest} and earned **${formatMoney(earned)}**!${crateLine}`);
     await message.reply({ embeds: [embed] });
@@ -412,7 +421,7 @@ const handlers = {
 
     if (Math.random() < config.begNothingChance) {
       const line = NOTHING_LINES[randInt(0, NOTHING_LINES.length - 1)];
-      const embed = new EmbedBuilder().setColor(0x99aab5).setTitle('🙏 Begging').setDescription(line);
+      const embed = new EmbedBuilder().setColor(0x99aab5).setThumbnail(ICONS.beg).setTitle('🙏 Begging').setDescription(line);
       return message.reply({ embeds: [embed] });
     }
 
@@ -421,6 +430,7 @@ const handlers = {
     const updated = await db.addBalance(userId, earned);
     const embed = new EmbedBuilder()
       .setColor(0x99aab5)
+      .setThumbnail(ICONS.beg)
       .setTitle('🙏 Begging')
       .setDescription(`${giver} felt bad for you and gave you **${formatMoney(earned)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -450,6 +460,7 @@ const handlers = {
       const updated = await db.addBalance(userId, earned);
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
+        .setThumbnail(ICONS.crime)
         .setTitle('🎭 Crime Successful!')
         .setDescription(`You ${crime} and got away with **${formatMoney(earned)}**!`)
         .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -460,6 +471,7 @@ const handlers = {
       const line = CAUGHT_LINES[randInt(0, CAUGHT_LINES.length - 1)];
       const embed = new EmbedBuilder()
         .setColor(0xed4245)
+        .setThumbnail(ICONS.crime)
         .setTitle('🚨 Busted!')
         .setDescription(`${line} You paid a fine of **${formatMoney(penalty)}**.`)
         .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -489,6 +501,7 @@ const handlers = {
       const line = FLEE_LINES[randInt(0, FLEE_LINES.length - 1)];
       const embed = new EmbedBuilder()
         .setColor(0xed4245)
+        .setThumbnail(ICONS.hunt)
         .setTitle(`${monster.emoji} A wild ${monster.name} appeared!`)
         .setDescription(`${line}\n\nNo reward this time — try again once your cooldown resets.`);
       return message.reply({ embeds: [embed] });
@@ -507,6 +520,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.hunt)
       .setTitle(`${monster.emoji} You defeated a ${monster.name}!`)
       .setDescription(`You earned **${formatMoney(reward)}**!${crateLine}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -525,9 +539,74 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.crate)
       .setAuthor({ name: `${target.username}'s Crates`, iconURL: target.displayAvatarURL() })
       .setDescription(lines.join('\n'))
       .setFooter({ text: `Use ${config.prefix}opencrate <rarity> to open one` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async raffle(message) {
+    const userId = message.author.id;
+    const user = await db.getUser(userId);
+
+    if (user.tickets < 1) {
+      return message.reply("You don't have any raffle tickets. Ask the bot owner for some!");
+    }
+
+    await db.addTickets(userId, -1);
+
+    const winChance = luckAdjustedChance(config.raffleWinChance, user.luck);
+    const won = Math.random() < winChance;
+
+    if (won) {
+      const updated = await db.addBalance(userId, config.raffleJackpot);
+      const embed = new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setThumbnail(ICONS.jackpot)
+        .setTitle('🎟️ JACKPOT!!!')
+        .setDescription(
+          `The raffle wheel spins... and lands on **YOU**!\n\n` +
+          `You won the jackpot of **${formatMoney(config.raffleJackpot)}**!`
+        )
+        .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+      await message.reply({ embeds: [embed] });
+    } else {
+      const remaining = await db.getUser(userId);
+      const embed = new EmbedBuilder()
+        .setColor(0x99aab5)
+        .setThumbnail(ICONS.jackpot)
+        .setTitle('🎟️ No Luck This Time')
+        .setDescription(`The wheel spins... and lands on someone else. Better luck next ticket!`)
+        .setFooter({ text: `Tickets remaining: ${remaining.tickets}` });
+      await message.reply({ embeds: [embed] });
+    }
+  },
+
+  async tickets(message, args) {
+    const target = (await resolveTarget(message, args)) || message.author;
+    const row = await db.getUser(target.id);
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setDescription(`🎟️ **${target.username}** has **${row.tickets}** raffle ticket${row.tickets === 1 ? '' : 's'}.`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async givetickets(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+
+    const amountRaw = args.find((a) => /^\d+$/.test(a));
+    const amount = amountRaw !== undefined ? parseInt(amountRaw, 10) : null;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const finalTarget = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (!amount) return message.reply(`Usage: \`${config.prefix}givetickets <amount> [@user]\``);
+    if (!finalTarget) return message.reply('Could not find that user.');
+
+    const updated = await db.addTickets(finalTarget.id, amount);
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setDescription(`🎟️ Gave **${amount}x Raffle Ticket${amount === 1 ? '' : 's'}** to **${finalTarget.username}**. They now have **${updated.tickets}**.`);
     await message.reply({ embeds: [embed] });
   },
 
@@ -552,6 +631,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(rarity.color)
+      .setThumbnail(ICONS.crate)
       .setTitle(`${rarity.emoji} ${rarity.label} Crate Opened!`)
       .setDescription(`You found **${formatMoney(reward)}** inside!`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -577,6 +657,7 @@ const handlers = {
     const newCount = updated[`crates_${rarityKey}`];
     const embed = new EmbedBuilder()
       .setColor(rarity.color)
+      .setThumbnail(ICONS.crate)
       .setDescription(`${rarity.emoji} Gave **${amount}x ${rarity.label} Crate** to **${finalTarget.username}**. They now have **${newCount}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -617,6 +698,7 @@ const handlers = {
 
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
+        .setThumbnail(ICONS.rob)
         .setTitle('🕵️ Robbery Successful!')
         .setDescription(`You snuck up on **${target.username}** and got away with **${formatMoney(stolen)}**!`)
         .setFooter({ text: `New balance: ${formatMoney(updatedRobber.balance)}` });
@@ -627,6 +709,7 @@ const handlers = {
 
       const embed = new EmbedBuilder()
         .setColor(0xed4245)
+        .setThumbnail(ICONS.rob)
         .setTitle('🚨 Caught Red-Handed!')
         .setDescription(`You got caught trying to rob **${target.username}** and paid a fine of **${formatMoney(penalty)}**.`)
         .setFooter({ text: `New balance: ${formatMoney(updatedRobber.balance)}` });
@@ -655,6 +738,7 @@ const handlers = {
 
     const challengeEmbed = new EmbedBuilder()
       .setColor(0xf5c518)
+      .setThumbnail(ICONS.battle)
       .setTitle('⚔️ Battle Challenge!')
       .setDescription(
         `**${message.author.username}** has challenged **${target.username}** to a battle for **${formatMoney(amount)}**!\n\n` +
@@ -708,6 +792,7 @@ const handlers = {
 
     const resultEmbed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.battle)
       .setTitle('⚔️ Battle Result')
       .setDescription(`**${winnerName}** defeated **${loserName}** and won the pot of **${formatMoney(pot)}**!`)
       .setFooter({ text: `${winnerName}'s new balance: ${formatMoney(updatedWinner.balance)}` });
@@ -734,6 +819,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.give)
       .setDescription(`🤝 **${message.author.username}** gave **${formatMoney(amount)}** to **${target.username}**!`);
     await message.reply({ embeds: [embed] });
   },
@@ -755,7 +841,7 @@ const handlers = {
       })
     );
 
-    const embed = new EmbedBuilder().setColor(0xf5c518).setTitle('💰 Richest Users').setDescription(lines.join('\n'));
+    const embed = new EmbedBuilder().setColor(0xf5c518).setThumbnail(ICONS.leaderboard).setTitle('💰 Richest Users').setDescription(lines.join('\n'));
     await message.reply({ embeds: [embed] });
   },
 
@@ -787,6 +873,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
+      .setThumbnail(ICONS.coinflip)
       .setTitle(`🪙 The coin landed on ${result}!`)
       .setDescription(won ? `You won **${formatMoney(amount)}**!` : `You lost **${formatMoney(amount)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -826,6 +913,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(color)
+      .setThumbnail(ICONS.dice)
       .setTitle('🎲 Dice Roll-off')
       .setDescription(`You rolled **${yourRoll}**, the house rolled **${houseRoll}**.\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -880,6 +968,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(color)
+      .setThumbnail(ICONS.slots)
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
@@ -898,6 +987,7 @@ const handlers = {
     const updated = await db.addBalance(finalTarget.id, amount);
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.balance)
       .setDescription(`✅ Added **${formatMoney(amount)}** to **${finalTarget.username}**'s balance.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
     await message.reply({ embeds: [embed] });
@@ -915,6 +1005,7 @@ const handlers = {
     const updated = await db.addBalance(finalTarget.id, -amount);
     const embed = new EmbedBuilder()
       .setColor(0xed4245)
+      .setThumbnail(ICONS.balance)
       .setDescription(`✅ Removed **${formatMoney(amount)}** from **${finalTarget.username}**'s balance.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
     await message.reply({ embeds: [embed] });
@@ -933,6 +1024,7 @@ const handlers = {
     const updated = await db.setBalance(finalTarget.id, amount);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.balance)
       .setDescription(`✅ Set **${finalTarget.username}**'s balance to **${formatMoney(updated.balance)}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -950,6 +1042,7 @@ const handlers = {
     const updated = await db.setLuck(finalTarget.id, amount);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.luck)
       .setDescription(`🍀 Set **${finalTarget.username}**'s luck to **${updated.luck}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -967,6 +1060,7 @@ const handlers = {
     const updated = await db.addLuck(finalTarget.id, amount);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.luck)
       .setDescription(`🍀 Adjusted **${finalTarget.username}**'s luck by **${amount >= 0 ? '+' : ''}${amount}**. New luck: **${updated.luck}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -984,6 +1078,7 @@ const handlers = {
     const updated = await db.addLuck(finalTarget.id, -amount);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.luck)
       .setDescription(`🍀 Removed **${amount}** luck from **${finalTarget.username}**. New luck: **${updated.luck}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -995,6 +1090,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.luck)
       .setDescription(`🍀 **${target.username}**'s luck: **${row.luck}** (range: -100 to 100, 0 is neutral)`);
     await message.reply({ embeds: [embed] });
   },
@@ -1005,6 +1101,7 @@ const handlers = {
     const userCount = await db.getUserCount();
     const warnEmbed = new EmbedBuilder()
       .setColor(0xed4245)
+      .setThumbnail(ICONS.admin)
       .setTitle('⚠️ WARNING: Full Economy Reset')
       .setDescription(
         `This will set **every tracked user's balance to 0** — that's **${userCount}** user${userCount === 1 ? '' : 's'}.\n\n` +
@@ -1260,6 +1357,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
+      .setThumbnail(ICONS.jackpot)
       .setTitle('🎰 JACKPOT')
       .setDescription(
         won
@@ -1273,6 +1371,7 @@ const handlers = {
   async help(message) {
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
+      .setThumbnail(ICONS.help)
       .setTitle('📖 Commands')
       .setDescription(buildHelpDescription(config.prefix));
     await message.reply({ embeds: [embed] });
