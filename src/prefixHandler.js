@@ -20,6 +20,8 @@ const {
   luckWeightedReward,
 } = require('./games/crateEngine');
 const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEngine');
+const { FLEE_LINES, pickWeightedMonster } = require('./games/huntEngine');
+const { buildHelpDescription } = require('./games/helpText');
 
 // Maps short aliases to their real command name — resolved in messageCreate.js.
 const ALIASES = {
@@ -463,6 +465,52 @@ const handlers = {
         .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
       await message.reply({ embeds: [embed] });
     }
+  },
+
+  async hunt(message) {
+    const userId = message.author.id;
+    const row = await db.getUser(userId);
+    const now = Date.now();
+    const last = row.last_hunt ? new Date(row.last_hunt).getTime() : 0;
+    const elapsed = now - last;
+
+    if (elapsed < config.huntCooldownMs) {
+      const remaining = config.huntCooldownMs - elapsed;
+      return message.reply(`⏳ You're still resting up from the last hunt. Try again in **${msToTimeString(remaining)}**.`);
+    }
+
+    await db.setLastHunt(userId, new Date(now));
+
+    const monster = pickWeightedMonster();
+    const winChance = luckAdjustedChance(monster.successChance, row.luck);
+    const won = Math.random() < winChance;
+
+    if (!won) {
+      const line = FLEE_LINES[randInt(0, FLEE_LINES.length - 1)];
+      const embed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle(`${monster.emoji} A wild ${monster.name} appeared!`)
+        .setDescription(`${line}\n\nNo reward this time — try again once your cooldown resets.`);
+      return message.reply({ embeds: [embed] });
+    }
+
+    const reward = randInt(monster.minReward, monster.maxReward);
+    const updated = await db.addBalance(userId, reward);
+
+    let crateLine = '';
+    if (Math.random() < monster.crateChance) {
+      const rarityKey = pickWeightedRarity();
+      const rarity = CRATE_RARITIES[rarityKey];
+      await db.addCrates(userId, rarityKey, 1);
+      crateLine = `\n${rarity.emoji} It also dropped a **${rarity.label} Crate**!`;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle(`${monster.emoji} You defeated a ${monster.name}!`)
+      .setDescription(`You earned **${formatMoney(reward)}**!${crateLine}`)
+      .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
   },
 
   async crates(message, args) {
@@ -1223,28 +1271,10 @@ const handlers = {
   },
 
   async help(message) {
-    const p = config.prefix;
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('📖 Commands')
-      .setDescription(
-        `Both \`/slash\` commands and \`${p}prefix\` commands work.\n\n` +
-        `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}beg\`, \`${p}crime\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
-        `\`${p}rob @user\` (risky — chance to fail and pay a fine), \`${p}battle @user <amount>\` (PvP wager, winner takes all)\n\n` +
-        `**Bank**\n\`${p}deposit <amount|all>\`, \`${p}withdraw <amount|all>\` — banked coins are safe from \`${p}rob\` (but not \`${p}vaultbreak\`)\n\n` +
-        `**Shop**\n\`${p}shop\` (view items), \`${p}buy <item> [amount]\` — buy Luck Upgrades or Electric Drills\n` +
-        `\`${p}vaultbreak @user\` — spend a drill for a chance to steal from someone's bank (riskier and rarer than \`${p}rob\`)\n\n` +
-        `**Crates**\n\`${p}crates [@user]\` (view inventory), \`${p}opencrate <rarity>\`\n` +
-        `Rarities: Common, Uncommon, Rare, Epic, Legendary. Earned from \`${p}daily\` (guaranteed Common) and \`${p}quest\` (chance of any rarity).\n\n` +
-        `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
-        `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
-        `\`${p}mines <amount|all> [mines]\`, \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +
-        `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n` +
-        `\`${p}setluck <-100..100> [@user]\`, \`${p}addluck <amount> [@user]\`, \`${p}removeluck <amount> [@user]\`, \`${p}luck [@user]\`\n` +
-        `\`${p}givecrate <rarity> <amount> [@user]\` (luck also biases crate rewards — this is how you rig them)\n` +
-        `\`${p}resetalleconomy\` (wipes every balance to 0, requires confirmation)\n\n` +
-        `Tip: type \`all\` instead of an amount on any gambling command to bet your whole balance (with a confirmation step).`
-      );
+      .setDescription(buildHelpDescription(config.prefix));
     await message.reply({ embeds: [embed] });
   },
 };

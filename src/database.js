@@ -35,6 +35,7 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS crates_legendary INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS drills INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_vaultbreak TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_hunt TIMESTAMPTZ;`);
 }
 
 async function getUser(userId) {
@@ -98,6 +99,10 @@ async function addDrills(userId, amount) {
 
 async function setLastVaultbreak(userId, date) {
   await pool.query(`UPDATE users SET last_vaultbreak = $2 WHERE user_id = $1`, [userId, date]);
+}
+
+async function setLastHunt(userId, date) {
+  await pool.query(`UPDATE users SET last_hunt = $2 WHERE user_id = $1`, [userId, date]);
 }
 
 async function setLastDaily(userId, date) {
@@ -208,6 +213,7 @@ module.exports = {
   setLastBeg,
   setLastCrime,
   setLastVaultbreak,
+  setLastHunt,
   getLeaderboard,
   setLuck,
   addLuck,

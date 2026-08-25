@@ -44,4 +44,5 @@ module.exports = {
   vaultbreakSuccessChance: 0.3, // lower than /rob — banks are meant to be safer
   vaultbreakMinStealPct: 0.05,
   vaultbreakMaxStealPct: 0.15,
+  huntCooldownMs: 10 * 60 * 1000, // 10 minutes — fast, no penalty on loss
 };
