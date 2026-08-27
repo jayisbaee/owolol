@@ -22,6 +22,8 @@ function buildHelpDescription(prefix) {
     `\`${p}givecrate <rarity> <amount> [@user]\`, \`${p}givetickets <amount> [@user]\`\n` +
     `\`${p}createpet <name> <winboost> [payoutmultiplier] [@user]\`, \`${p}givepet <name> [@user]\` — fully custom pets, up to guaranteed wins and absurd payout multipliers\n` +
     `\`${p}resetalleconomy\` (wipes every balance to 0, requires confirmation)\n\n` +
+    `**Server Settings**\n\`/aliases\` (or \`${p}aliases\`) — view this server's custom command aliases\n` +
+    `\`/setalias <alias> <command>\`, \`/removealias <alias>\` — anyone with Manage Server permission can create short custom aliases, e.g. \`${p}cr\` for \`${p}crates\`\n\n` +
     `Tip: type \`all\` instead of an amount on any gambling or bank command to use your whole balance (with a confirmation step on gambling commands).`
   );
 }

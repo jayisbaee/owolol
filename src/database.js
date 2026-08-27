@@ -51,6 +51,19 @@ async function ensureSchema() {
       created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+  // Per-server custom command aliases (e.g. "cr" -> "crates"). Managed by
+  // anyone with Discord's Manage Server permission in that guild — separate
+  // from the bot owner's global ADMIN_IDS.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guild_aliases (
+      guild_id      TEXT NOT NULL,
+      alias         TEXT NOT NULL,
+      command_name  TEXT NOT NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, alias)
+    );
+  `);
 }
 
 async function getUser(userId) {
@@ -292,6 +305,44 @@ async function getActivePet(userId) {
   return rows[0] || null;
 }
 
+// Sets (or overwrites) a per-server alias, e.g. guildId, "cr", "crates".
+async function setGuildAlias(guildId, alias, commandName) {
+  const { rows } = await pool.query(
+    `INSERT INTO guild_aliases (guild_id, alias, command_name)
+     VALUES ($1, LOWER($2), $3)
+     ON CONFLICT (guild_id, alias) DO UPDATE SET command_name = EXCLUDED.command_name
+     RETURNING *`,
+    [guildId, alias, commandName]
+  );
+  return rows[0];
+}
+
+async function removeGuildAlias(guildId, alias) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM guild_aliases WHERE guild_id = $1 AND alias = LOWER($2)`,
+    [guildId, alias]
+  );
+  return rowCount > 0;
+}
+
+async function getGuildAliases(guildId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM guild_aliases WHERE guild_id = $1 ORDER BY alias`,
+    [guildId]
+  );
+  return rows;
+}
+
+// Looks up a single alias for one server. Returns the real command name, or
+// null if this server hasn't defined that alias.
+async function resolveGuildAlias(guildId, alias) {
+  const { rows } = await pool.query(
+    `SELECT command_name FROM guild_aliases WHERE guild_id = $1 AND alias = LOWER($2) LIMIT 1`,
+    [guildId, alias]
+  );
+  return rows[0]?.command_name || null;
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -322,4 +373,8 @@ module.exports = {
   findOwnedPetByName,
   setActivePet,
   getActivePet,
+  setGuildAlias,
+  removeGuildAlias,
+  getGuildAliases,
+  resolveGuildAlias,
 };

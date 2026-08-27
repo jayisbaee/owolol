@@ -1,4 +1,4 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const ICONS = require('./games/icons');
 const db = require('./database');
 const config = require('./config');
@@ -1601,6 +1601,63 @@ const handlers = {
           : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async setalias(message, args) {
+    if (!message.guild) return message.reply('This command only works in a server.');
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return message.reply('🚫 You need the Manage Server permission to use this.');
+    }
+
+    const alias = (args[0] || '').toLowerCase().trim();
+    const commandName = (args[1] || '').toLowerCase().trim();
+
+    if (!alias || !commandName) {
+      return message.reply(`Usage: \`${config.prefix}setalias <alias> <command>\` (e.g. \`${config.prefix}setalias cr crates\`)`);
+    }
+    if (!/^[a-z0-9]{1,20}$/.test(alias)) {
+      return message.reply('Aliases must be 1-20 letters/numbers, no spaces or symbols.');
+    }
+    if (!handlers[commandName]) {
+      return message.reply(`**${commandName}** isn't a real command. Check \`${config.prefix}help\` for valid command names.`);
+    }
+    if (handlers[alias]) {
+      return message.reply(`**${alias}** is already a built-in command name and can't be used as an alias.`);
+    }
+
+    await db.setGuildAlias(message.guild.id, alias, commandName);
+    await message.reply(`✅ Set up \`${config.prefix}${alias}\` as an alias for \`${config.prefix}${commandName}\` in this server.`);
+  },
+
+  async removealias(message, args) {
+    if (!message.guild) return message.reply('This command only works in a server.');
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      return message.reply('🚫 You need the Manage Server permission to use this.');
+    }
+
+    const alias = (args[0] || '').toLowerCase().trim();
+    if (!alias) return message.reply(`Usage: \`${config.prefix}removealias <alias>\``);
+
+    const removed = await db.removeGuildAlias(message.guild.id, alias);
+    if (!removed) return message.reply(`No alias named **${alias}** exists in this server.`);
+    await message.reply(`✅ Removed the alias **${alias}**.`);
+  },
+
+  async aliases(message) {
+    if (!message.guild) return message.reply('This command only works in a server.');
+
+    const aliasRows = await db.getGuildAliases(message.guild.id);
+    if (aliasRows.length === 0) {
+      return message.reply(`This server has no custom aliases yet. Set one with \`${config.prefix}setalias\`.`);
+    }
+
+    const lines = aliasRows.map((a) => `\`${config.prefix}${a.alias}\` → \`${config.prefix}${a.command_name}\``);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setThumbnail(ICONS.help)
+      .setTitle(`📖 ${message.guild.name}'s Custom Aliases`)
+      .setDescription(lines.join('\n'));
     await message.reply({ embeds: [embed] });
   },
 

@@ -1,4 +1,5 @@
 const config = require('../config');
+const db = require('../database');
 const { handlers, ALIASES } = require('../prefixHandler');
 
 module.exports = {
@@ -12,7 +13,18 @@ module.exports = {
     let commandName = (args.shift() || '').toLowerCase();
     commandName = ALIASES[commandName] || commandName;
 
-    const handler = handlers[commandName];
+    let handler = handlers[commandName];
+
+    // Fall back to this server's own custom aliases (set via /setalias) if
+    // it's not a built-in command or built-in alias.
+    if (!handler && message.guild) {
+      const customTarget = await db.resolveGuildAlias(message.guild.id, commandName).catch(() => null);
+      if (customTarget && handlers[customTarget]) {
+        commandName = customTarget;
+        handler = handlers[commandName];
+      }
+    }
+
     if (!handler) return;
 
     try {
