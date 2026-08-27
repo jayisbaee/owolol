@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const ICONS = require('../../games/icons');
 const db = require('../../database');
-const { formatMoney } = require('../../utils/economyUtils');
+const { formatMoney, formatCompactMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
 const { applyPetToChance, applyPetToPayout } = require('../../games/petEngine');
 
@@ -78,7 +78,7 @@ module.exports = {
       .setTitle('🎰 JACKPOT')
       .setDescription(
         won
-          ? `🎉 **YOU WON!** You gained **${formatMoney(winnings)}** on top of your stake!`
+          ? `🎉 **YOU WON!** You gained **${formatCompactMoney(winnings)}** on top of your stake!`
           : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });

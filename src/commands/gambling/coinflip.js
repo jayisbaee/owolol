@@ -4,6 +4,7 @@ const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
 const { applyPetToChance, applyPetToPayout } = require('../../games/petEngine');
+const { sendAsCasino } = require('../../utils/casinoWebhook');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -57,6 +58,15 @@ module.exports = {
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
 
-    await interaction.editReply({ embeds: [embed] });
+    // Try to post the result under the "🎰 Casino" persona instead of the
+    // bot's own identity. Falls back to a normal reply if the bot doesn't
+    // have Manage Webhooks permission or the webhook send fails for any
+    // other reason — the command always still responds either way.
+    const posted = await sendAsCasino(interaction.channel, { embeds: [embed] });
+    if (posted) {
+      await interaction.deleteReply().catch(() => {});
+    } else {
+      await interaction.editReply({ embeds: [embed] });
+    }
   },
 };

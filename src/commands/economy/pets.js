@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 
 module.exports = {
@@ -25,6 +26,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setAuthor({ name: `${target.username}'s Pets`, iconURL: target.displayAvatarURL() })
       .setDescription(lines.join('\n\n'))
       .setFooter({ text: 'Use /equippet <name> to activate one' });

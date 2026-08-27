@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const config = require('../../config');
-const { formatMoney } = require('../../utils/economyUtils');
+const { formatMoney, formatCompactMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
 
 module.exports = {
@@ -30,10 +31,11 @@ module.exports = {
       const updated = await db.addBalance(userId, config.raffleJackpot);
       const embed = new EmbedBuilder()
         .setColor(0xf1c40f)
+        .setThumbnail(ICONS.ticket)
         .setTitle('🎟️ JACKPOT!!!')
         .setDescription(
           `The raffle wheel spins... and lands on **YOU**!\n\n` +
-          `You won the jackpot of **${formatMoney(config.raffleJackpot)}**!`
+          `You won the jackpot of **${formatCompactMoney(config.raffleJackpot)}**!`
         )
         .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
       await interaction.editReply({ embeds: [embed] });
@@ -41,6 +43,7 @@ module.exports = {
       const remaining = await db.getUser(userId);
       const embed = new EmbedBuilder()
         .setColor(0x99aab5)
+        .setThumbnail(ICONS.ticket)
         .setTitle('🎟️ No Luck This Time')
         .setDescription(`The wheel spins... and lands on someone else. Better luck next ticket!`)
         .setFooter({ text: `Tickets remaining: ${remaining.tickets}` });

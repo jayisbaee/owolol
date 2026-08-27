@@ -31,6 +31,8 @@ const ICONS = {
   jackpot: `${BASE}/1f3b0.png`, // slot machine
   help: `${BASE}/1f4d6.png`, // open book
   admin: `${BASE}/1f6e1-fe0f.png`, // shield
+  pet: `${BASE}/1f43e.png`, // paw prints
+  ticket: `${BASE}/1f3ab.png`, // ticket
 };
 
 module.exports = ICONS;

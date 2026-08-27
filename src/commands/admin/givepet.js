@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { isAdmin } = require('../../utils/economyUtils');
 
@@ -30,6 +31,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setDescription(`🐾 Gave **${target.username}** a copy of **${pet.name}** (win boost ${source.win_boost >= 0 ? '+' : ''}${source.win_boost}%, ${source.payout_multiplier}x payout).`);
 
     await interaction.reply({ embeds: [embed], ephemeral: true });

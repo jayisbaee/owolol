@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 
 module.exports = {
@@ -15,6 +16,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.ticket)
       .setDescription(`🎟️ **${target.username}** has **${row.tickets}** raffle ticket${row.tickets === 1 ? '' : 's'}.`);
 
     await interaction.reply({ embeds: [embed] });

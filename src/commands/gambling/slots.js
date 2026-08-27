@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
 const { applyLuckToReels } = require('../../games/luckEngine');
+const { sendAsCasino } = require('../../utils/casinoWebhook');
 
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 // Payout multiplier when all 3 reels match, keyed by symbol.
@@ -19,11 +21,12 @@ module.exports = {
     const amount = interaction.options.getInteger('amount');
     const userId = interaction.user.id;
 
+    await interaction.deferReply();
+
     const user = await db.getUser(userId);
     if (user.balance < amount) {
-      return interaction.reply({
+      return interaction.editReply({
         content: `You don't have enough coins. Your balance: ${formatMoney(user.balance)}`,
-        ephemeral: true,
       });
     }
 
@@ -56,10 +59,16 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(color)
+      .setThumbnail(ICONS.slots)
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
 
-    await interaction.reply({ embeds: [embed] });
+    const posted = await sendAsCasino(interaction.channel, { embeds: [embed] });
+    if (posted) {
+      await interaction.deleteReply().catch(() => {});
+    } else {
+      await interaction.editReply({ embeds: [embed] });
+    }
   },
 };

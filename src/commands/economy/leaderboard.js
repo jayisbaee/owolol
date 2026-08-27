@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
-const { formatMoney } = require('../../utils/economyUtils');
+const { formatCompactMoney } = require('../../utils/economyUtils');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -23,12 +24,13 @@ module.exports = {
           name = user.username;
         } catch (_) {}
         const rank = medals[i] || `${i + 1}.`;
-        return `${rank} **${name}** — ${formatMoney(row.balance)}`;
+        return `${rank} **${name}** — ${formatCompactMoney(row.balance)}`;
       })
     );
 
     const embed = new EmbedBuilder()
       .setColor(0xf5c518)
+      .setThumbnail(ICONS.leaderboard)
       .setTitle('💰 Richest Users')
       .setDescription(lines.join('\n'));
 

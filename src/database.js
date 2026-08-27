@@ -65,14 +65,20 @@ async function getUser(userId) {
 
 // Adds (or subtracts, with a negative amount) from a user's balance.
 // Never lets balance go below 0. Returns the updated row.
+// Postgres BIGINT's real ceiling, minus headroom — clamping here means no
+// caller anywhere in the codebase can ever crash this query with an
+// out-of-range value, even if a future feature forgets its own safety cap.
+const BIGINT_SAFE_MAX = 9_000_000_000_000_000_000;
+
 async function addBalance(userId, amount) {
   await getUser(userId);
+  const safeAmount = Math.max(-BIGINT_SAFE_MAX, Math.min(BIGINT_SAFE_MAX, Math.trunc(amount)));
   const { rows } = await pool.query(
     `UPDATE users
-     SET balance = GREATEST(balance + $2, 0)
+     SET balance = GREATEST(LEAST(balance + $2, ${BIGINT_SAFE_MAX}), 0)
      WHERE user_id = $1
      RETURNING *`,
-    [userId, amount]
+    [userId, safeAmount]
   );
   return rows[0];
 }

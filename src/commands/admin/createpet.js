@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { isAdmin } = require('../../utils/economyUtils');
 
@@ -43,6 +44,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setTitle('🐾 Pet Created')
       .setDescription(
         `Created **${pet.name}** for **${target.username}**.\n\n` +

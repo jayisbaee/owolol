@@ -15,7 +15,8 @@ function buildHelpDescription(prefix) {
     `**Pets**\n\`${p}pets [@user]\` (view), \`${p}equippet <name>\` — active pet boosts win chance and payout on coinflip, jackpot, and crossroad\n\n` +
     `**Gambling**\n\`${p}coinflip <amount|all> <heads|tails>\` (\`${p}cf\`), \`${p}dice <amount|all>\`, ` +
     `\`${p}slots <amount|all>\` (\`${p}s\`), \`${p}blackjack <amount|all>\` (\`${p}bj\`), ` +
-    `\`${p}mines <amount|all> [mines]\`, \`${p}crossroad <amount>\` (cross traffic lanes for a rising multiplier), \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n\n` +
+    `\`${p}mines <amount|all> [mines]\`, \`${p}crossroad <amount>\` (cross traffic lanes for a rising multiplier), \`${p}jackpot\` (risk your whole balance for 2x or nothing)\n` +
+    `*(coinflip, dice, and slots post as "🎰 Casino" instead of the bot if it has Manage Webhooks permission)*\n\n` +
     `**Admin**\n\`${p}addmoney <amount> [@user]\`, \`${p}removemoney <amount> [@user]\`, \`${p}setmoney <amount> [@user]\`\n` +
     `\`${p}setluck <-100..100> [@user]\`, \`${p}addluck <amount> [@user]\`, \`${p}removeluck <amount> [@user]\`, \`${p}luck [@user]\`\n` +
     `\`${p}givecrate <rarity> <amount> [@user]\`, \`${p}givetickets <amount> [@user]\`\n` +

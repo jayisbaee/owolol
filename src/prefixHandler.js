@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const ICONS = require('./games/icons');
 const db = require('./database');
 const config = require('./config');
-const { formatMoney, msToTimeString, isAdmin, randInt } = require('./utils/economyUtils');
+const { formatMoney, formatCompactMoney, msToTimeString, isAdmin, randInt } = require('./utils/economyUtils');
 const { freshDeck, handValue } = require('./games/blackjackEngine');
 const {
   TOTAL_TILES: MINES_TOTAL_TILES,
@@ -29,6 +29,7 @@ const {
   luckWeightedReward,
 } = require('./games/crateEngine');
 const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEngine');
+const { sendAsCasino } = require('./utils/casinoWebhook');
 const { FLEE_LINES, pickWeightedMonster } = require('./games/huntEngine');
 const { buildHelpDescription } = require('./games/helpText');
 
@@ -571,11 +572,11 @@ const handlers = {
       const updated = await db.addBalance(userId, config.raffleJackpot);
       const embed = new EmbedBuilder()
         .setColor(0xf1c40f)
-        .setThumbnail(ICONS.jackpot)
+        .setThumbnail(ICONS.ticket)
         .setTitle('🎟️ JACKPOT!!!')
         .setDescription(
           `The raffle wheel spins... and lands on **YOU**!\n\n` +
-          `You won the jackpot of **${formatMoney(config.raffleJackpot)}**!`
+          `You won the jackpot of **${formatCompactMoney(config.raffleJackpot)}**!`
         )
         .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
       await message.reply({ embeds: [embed] });
@@ -583,7 +584,7 @@ const handlers = {
       const remaining = await db.getUser(userId);
       const embed = new EmbedBuilder()
         .setColor(0x99aab5)
-        .setThumbnail(ICONS.jackpot)
+        .setThumbnail(ICONS.ticket)
         .setTitle('🎟️ No Luck This Time')
         .setDescription(`The wheel spins... and lands on someone else. Better luck next ticket!`)
         .setFooter({ text: `Tickets remaining: ${remaining.tickets}` });
@@ -596,6 +597,7 @@ const handlers = {
     const row = await db.getUser(target.id);
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.ticket)
       .setDescription(`🎟️ **${target.username}** has **${row.tickets}** raffle ticket${row.tickets === 1 ? '' : 's'}.`);
     await message.reply({ embeds: [embed] });
   },
@@ -614,6 +616,7 @@ const handlers = {
     const updated = await db.addTickets(finalTarget.id, amount);
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.ticket)
       .setDescription(`🎟️ Gave **${amount}x Raffle Ticket${amount === 1 ? '' : 's'}** to **${finalTarget.username}**. They now have **${updated.tickets}**.`);
     await message.reply({ embeds: [embed] });
   },
@@ -624,7 +627,8 @@ const handlers = {
     const name = args.find((a) => !/^-?\d+$/.test(a) && !/^<@!?(\d+)>$/.test(a) && !/^\d{15,}$/.test(a));
     const numbers = args.filter((a) => /^-?\d+(\.\d+)?$/.test(a));
     const winBoost = numbers[0] !== undefined ? Math.round(parseFloat(numbers[0])) : null;
-    const payoutMultiplier = numbers[1] !== undefined ? parseFloat(numbers[1]) : 1;
+    const rawMultiplier = numbers[1] !== undefined ? parseFloat(numbers[1]) : 1;
+    const payoutMultiplier = Math.max(0.1, Math.min(100000, isNaN(rawMultiplier) ? 1 : rawMultiplier));
     const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
     const target = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
 
@@ -638,6 +642,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setTitle('🐾 Pet Created')
       .setDescription(
         `Created **${pet.name}** for **${target.username}**.\n\n` +
@@ -666,6 +671,7 @@ const handlers = {
     const pet = await db.createPet(target.id, source.name, source.win_boost, source.payout_multiplier);
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setDescription(`🐾 Gave **${target.username}** a copy of **${pet.name}** (win boost ${source.win_boost >= 0 ? '+' : ''}${source.win_boost}%, ${source.payout_multiplier}x payout).`);
     await message.reply({ embeds: [embed] });
   },
@@ -686,6 +692,7 @@ const handlers = {
 
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setAuthor({ name: `${target.username}'s Pets`, iconURL: target.displayAvatarURL() })
       .setDescription(lines.join('\n\n'))
       .setFooter({ text: `Use ${config.prefix}equippet <name> to activate one` });
@@ -711,6 +718,7 @@ const handlers = {
     await db.setActivePet(userId, pet.id);
     const embed = new EmbedBuilder()
       .setColor(0xf1c40f)
+      .setThumbnail(ICONS.pet)
       .setDescription(`🐾 Equipped **${pet.name}**! (Win boost: ${pet.win_boost >= 0 ? '+' : ''}${pet.win_boost}%, Payout: ${pet.payout_multiplier}x)`);
     await message.reply({ embeds: [embed] });
   },
@@ -942,7 +950,7 @@ const handlers = {
           name = user.username;
         } catch (_) {}
         const rank = medals[i] || `${i + 1}.`;
-        return `${rank} **${name}** — ${formatMoney(row.balance)}`;
+        return `${rank} **${name}** — ${formatCompactMoney(row.balance)}`;
       })
     );
 
@@ -988,7 +996,9 @@ const handlers = {
       .setTitle(`🪙 The coin landed on ${result}!`)
       .setDescription(won ? `You won **${formatMoney(winnings)}**!` : `You lost **${formatMoney(amount)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    await message.reply({ embeds: [embed] });
+
+    const posted = await sendAsCasino(message.channel, { embeds: [embed] });
+    if (!posted) await message.reply({ embeds: [embed] });
   },
 
   async dice(message, args) {
@@ -1028,7 +1038,9 @@ const handlers = {
       .setTitle('🎲 Dice Roll-off')
       .setDescription(`You rolled **${yourRoll}**, the house rolled **${houseRoll}**.\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    await message.reply({ embeds: [embed] });
+
+    const posted = await sendAsCasino(message.channel, { embeds: [embed] });
+    if (!posted) await message.reply({ embeds: [embed] });
   },
 
   async slots(message, args) {
@@ -1083,7 +1095,9 @@ const handlers = {
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
-    await message.reply({ embeds: [embed] });
+
+    const posted = await sendAsCasino(message.channel, { embeds: [embed] });
+    if (!posted) await message.reply({ embeds: [embed] });
   },
 
   async addmoney(message, args) {
@@ -1582,7 +1596,7 @@ const handlers = {
       .setTitle('🎰 JACKPOT')
       .setDescription(
         won
-          ? `🎉 **YOU WON!** You gained **${formatMoney(winnings)}** on top of your stake!`
+          ? `🎉 **YOU WON!** You gained **${formatCompactMoney(winnings)}** on top of your stake!`
           : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
