@@ -1568,6 +1568,7 @@ const handlers = {
   },
 
   async jackpot(message) {
+    const userId = message.author.id;
     const user = await db.getUser(userId);
 
     if (user.balance <= 0) {
