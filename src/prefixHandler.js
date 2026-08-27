@@ -13,7 +13,15 @@ const {
 } = require('./games/minesEngine');
 const blackjackCommand = require('./commands/gambling/blackjack');
 const minesCommand = require('./commands/gambling/mines');
+const crossroadCommand = require('./commands/gambling/crossroad');
+const {
+  TOTAL_LANES: ROAD_TOTAL_LANES,
+  MAX_MULTIPLIER: ROAD_MAX_MULTIPLIER,
+  BASE_SURVIVAL_CHANCE: ROAD_SURVIVAL_CHANCE,
+  multiplierFor: multiplierForRoad,
+} = require('./games/crossroadEngine');
 const { luckAdjustedChance, luckyDiceRoll, applyLuckToReels } = require('./games/luckEngine');
+const { applyPetToChance, applyPetToPayout } = require('./games/petEngine');
 const {
   RARITIES: CRATE_RARITIES,
   RARITY_KEYS: CRATE_RARITY_KEYS,
@@ -610,6 +618,103 @@ const handlers = {
     await message.reply({ embeds: [embed] });
   },
 
+  async createpet(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+
+    const name = args.find((a) => !/^-?\d+$/.test(a) && !/^<@!?(\d+)>$/.test(a) && !/^\d{15,}$/.test(a));
+    const numbers = args.filter((a) => /^-?\d+(\.\d+)?$/.test(a));
+    const winBoost = numbers[0] !== undefined ? Math.round(parseFloat(numbers[0])) : null;
+    const payoutMultiplier = numbers[1] !== undefined ? parseFloat(numbers[1]) : 1;
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const target = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+
+    if (!name || winBoost === null) {
+      return message.reply(`Usage: \`${config.prefix}createpet <name> <winboost -100..100> [payoutmultiplier] [@user]\``);
+    }
+    if (!target) return message.reply('Could not find that user.');
+
+    const clampedBoost = Math.max(-100, Math.min(100, winBoost));
+    const pet = await db.createPet(target.id, name, clampedBoost, payoutMultiplier);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setTitle('🐾 Pet Created')
+      .setDescription(
+        `Created **${pet.name}** for **${target.username}**.\n\n` +
+        `Win boost: **${clampedBoost >= 0 ? '+' : ''}${clampedBoost}%**\n` +
+        `Payout multiplier: **${payoutMultiplier}x**\n\n` +
+        `They'll need to run \`${config.prefix}equippet ${pet.name}\` to activate it. Currently applies to: coinflip, jackpot, crossroad.`
+      );
+    await message.reply({ embeds: [embed] });
+  },
+
+  async givepet(message, args) {
+    if (!isAdmin(message.author.id)) return message.reply('🚫 You are not authorized to use this command.');
+
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    const target = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+    const name = args.filter((a) => a !== mentionArg).join(' ').trim();
+
+    if (!name) return message.reply(`Usage: \`${config.prefix}givepet <name> [@user]\``);
+    if (!target) return message.reply('Could not find that user.');
+
+    const source = await db.findPetByName(name);
+    if (!source) {
+      return message.reply(`No pet named **${name}** exists yet. Create one first with \`${config.prefix}createpet\`.`);
+    }
+
+    const pet = await db.createPet(target.id, source.name, source.win_boost, source.payout_multiplier);
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setDescription(`🐾 Gave **${target.username}** a copy of **${pet.name}** (win boost ${source.win_boost >= 0 ? '+' : ''}${source.win_boost}%, ${source.payout_multiplier}x payout).`);
+    await message.reply({ embeds: [embed] });
+  },
+
+  async pets(message, args) {
+    const target = (await resolveTarget(message, args)) || message.author;
+    const row = await db.getUser(target.id);
+    const petList = await db.getPetsByOwner(target.id);
+
+    if (petList.length === 0) {
+      return message.reply(`**${target.username}** doesn't have any pets yet.`);
+    }
+
+    const lines = petList.map((pet) => {
+      const active = pet.id === row.active_pet_id ? ' ✅ *(active)*' : '';
+      return `🐾 **${pet.name}**${active}\nWin boost: ${pet.win_boost >= 0 ? '+' : ''}${pet.win_boost}% • Payout: ${pet.payout_multiplier}x`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setAuthor({ name: `${target.username}'s Pets`, iconURL: target.displayAvatarURL() })
+      .setDescription(lines.join('\n\n'))
+      .setFooter({ text: `Use ${config.prefix}equippet <name> to activate one` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async equippet(message, args) {
+    const name = args.join(' ').trim();
+    if (!name) return message.reply(`Usage: \`${config.prefix}equippet <name>\` (or \`${config.prefix}equippet none\` to unequip)`);
+
+    const userId = message.author.id;
+
+    if (name.toLowerCase() === 'none') {
+      await db.setActivePet(userId, null);
+      return message.reply('🐾 Unequipped your pet.');
+    }
+
+    const pet = await db.findOwnedPetByName(userId, name);
+    if (!pet) {
+      return message.reply(`You don't own a pet named **${name}**. Check \`${config.prefix}pets\` for your list.`);
+    }
+
+    await db.setActivePet(userId, pet.id);
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setDescription(`🐾 Equipped **${pet.name}**! (Win boost: ${pet.win_boost >= 0 ? '+' : ''}${pet.win_boost}%, Payout: ${pet.payout_multiplier}x)`);
+    await message.reply({ embeds: [embed] });
+  },
+
   async opencrate(message, args) {
     const rarityKey = (args[0] || '').toLowerCase();
     const rarity = CRATE_RARITIES[rarityKey];
@@ -867,15 +972,21 @@ const handlers = {
     const amount = parsed.isAll ? fresh.balance : parsed.amount;
     if (amount <= 0) return message.reply('You have no balance left to bet.');
 
-    const result = Math.random() < luckAdjustedChance(0.5, fresh.luck) ? side : (side === 'heads' ? 'tails' : 'heads');
-    const won = result === side;
-    const updated = await db.addBalance(userId, won ? amount : -amount);
+    const pet = await db.getActivePet(userId);
+    const baseChance = luckAdjustedChance(0.5, fresh.luck);
+    const winChance = applyPetToChance(baseChance, pet);
+    const won = Math.random() < winChance;
+    const otherSide = side === 'heads' ? 'tails' : 'heads';
+    const result = won ? side : otherSide;
+
+    const winnings = applyPetToPayout(amount, pet);
+    const updated = await db.addBalance(userId, won ? winnings : -amount);
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
       .setThumbnail(ICONS.coinflip)
       .setTitle(`🪙 The coin landed on ${result}!`)
-      .setDescription(won ? `You won **${formatMoney(amount)}**!` : `You lost **${formatMoney(amount)}**.`)
+      .setDescription(won ? `You won **${formatMoney(winnings)}**!` : `You lost **${formatMoney(amount)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
     await message.reply({ embeds: [embed] });
   },
@@ -1336,8 +1447,113 @@ const handlers = {
     });
   },
 
-  async jackpot(message) {
+  async crossroad(message, args) {
+    const amount = parseAmount(args[0]);
+    if (!amount) return message.reply(`Usage: \`${config.prefix}crossroad <amount>\``);
+
     const userId = message.author.id;
+    const user = await db.getUser(userId);
+    if (user.balance < amount) {
+      return message.reply(`You don't have enough coins. Your balance: ${formatMoney(user.balance)}`);
+    }
+
+    await db.addBalance(userId, -amount);
+    const pet = await db.getActivePet(userId);
+
+    let lanesCrossed = 0;
+    let gameOver = false;
+
+    const embed = crossroadCommand.buildEmbed({ amount, lanesCrossed, gameOver });
+    const components = [crossroadCommand.buildButtons(false, true)];
+    const sent = await message.reply({ embeds: [embed], components });
+
+    const collector = sent.createMessageComponentCollector({
+      filter: (i) => i.user.id === userId,
+      time: 5 * 60_000,
+    });
+
+    collector.on('collect', async (btnInteraction) => {
+      if (gameOver) return;
+
+      if (btnInteraction.customId === 'road_cashout') {
+        gameOver = true;
+        await btnInteraction.deferUpdate();
+
+        const mult = multiplierForRoad(lanesCrossed);
+        const payout = applyPetToPayout(Math.floor(amount * mult), pet);
+        const updated = await db.addBalance(userId, payout);
+
+        const finalEmbed = crossroadCommand.buildEmbed({
+          amount, lanesCrossed, gameOver: true, color: 0x57f287,
+          statusText: `💰 Cashed out at **${mult.toFixed(2)}x** for **${formatMoney(payout)}**!`,
+        }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+
+        await btnInteraction.editReply({ embeds: [finalEmbed], components: [crossroadCommand.buildButtons(true)] });
+        collector.stop('cashout');
+        return;
+      }
+
+      if (btnInteraction.customId === 'road_cross') {
+        const baseChance = luckAdjustedChance(ROAD_SURVIVAL_CHANCE, user.luck);
+        const survivalChance = applyPetToChance(baseChance, pet);
+        const survived = Math.random() < survivalChance;
+
+        if (!survived) {
+          gameOver = true;
+          const hitLane = lanesCrossed + 1;
+          const finalEmbed = crossroadCommand.buildEmbed({
+            amount, lanesCrossed, gameOver: true, hitLane, color: 0xed4245,
+            statusText: `💥 You got hit crossing lane ${hitLane}! You lost **${formatMoney(amount)}**.`,
+          });
+          await btnInteraction.update({ embeds: [finalEmbed], components: [crossroadCommand.buildButtons(true)] });
+          collector.stop('hit');
+          return;
+        }
+
+        lanesCrossed++;
+
+        if (lanesCrossed === ROAD_TOTAL_LANES) {
+          gameOver = true;
+          await btnInteraction.deferUpdate();
+
+          const payout = applyPetToPayout(Math.floor(amount * ROAD_MAX_MULTIPLIER), pet);
+          const updated = await db.addBalance(userId, payout);
+
+          const finalEmbed = crossroadCommand.buildEmbed({
+            amount, lanesCrossed, gameOver: true, color: 0x57f287,
+            statusText: `🏆 You made it all the way across! Max payout: **${formatMoney(payout)}**!`,
+          }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+
+          await btnInteraction.editReply({ embeds: [finalEmbed], components: [crossroadCommand.buildButtons(true)] });
+          collector.stop('cleared');
+          return;
+        }
+
+        const updatedEmbed = crossroadCommand.buildEmbed({ amount, lanesCrossed, gameOver: false });
+        await btnInteraction.update({ embeds: [updatedEmbed], components: [crossroadCommand.buildButtons(false, false)] });
+      }
+    });
+
+    collector.on('end', async (_collected, reason) => {
+      if (reason === 'time' && !gameOver) {
+        gameOver = true;
+        const mult = multiplierForRoad(lanesCrossed);
+        const payout = applyPetToPayout(Math.floor(amount * mult), pet);
+        const updated = await db.addBalance(userId, payout);
+
+        const finalEmbed = crossroadCommand.buildEmbed({
+          amount, lanesCrossed, gameOver: true, color: 0xf5c518,
+          statusText: `⏳ Timed out — auto cashed out at **${mult.toFixed(2)}x** for **${formatMoney(payout)}**.`,
+        }).setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+
+        try {
+          await sent.edit({ embeds: [finalEmbed], components: [crossroadCommand.buildButtons(true)] });
+        } catch (_) {}
+      }
+    });
+  },
+
+  async jackpot(message) {
     const user = await db.getUser(userId);
 
     if (user.balance <= 0) {
@@ -1351,8 +1567,13 @@ const handlers = {
     const stake = fresh.balance;
     if (stake <= 0) return message.reply('You have no balance left to risk.');
 
-    const won = Math.random() < luckAdjustedChance(0.5, fresh.luck);
-    const delta = won ? stake : -stake;
+    const pet = await db.getActivePet(userId);
+    const baseChance = luckAdjustedChance(0.5, fresh.luck);
+    const winChance = applyPetToChance(baseChance, pet);
+    const won = Math.random() < winChance;
+
+    const winnings = applyPetToPayout(stake, pet);
+    const delta = won ? winnings : -stake;
     const updated = await db.addBalance(userId, delta);
 
     const embed = new EmbedBuilder()
@@ -1361,7 +1582,7 @@ const handlers = {
       .setTitle('🎰 JACKPOT')
       .setDescription(
         won
-          ? `🎉 **YOU WON!** Your **${formatMoney(stake)}** balance was doubled!`
+          ? `🎉 **YOU WON!** You gained **${formatMoney(winnings)}** on top of your stake!`
           : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });

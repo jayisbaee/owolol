@@ -1,7 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
+const { applyPetToChance, applyPetToPayout } = require('../../games/petEngine');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,6 +23,7 @@ module.exports = {
 
     const warnEmbed = new EmbedBuilder()
       .setColor(0xed4245)
+      .setThumbnail(ICONS.jackpot)
       .setTitle('⚠️ WARNING: All-In Bet')
       .setDescription(
         `You're about to risk your **ENTIRE balance** of **${formatMoney(user.balance)}**.\n\n` +
@@ -60,17 +63,22 @@ module.exports = {
     // slow DB round-trip can't cause Discord to time out the interaction.
     await btnInteraction.deferUpdate();
 
-    const winChance = luckAdjustedChance(0.5, fresh.luck);
+    const pet = await db.getActivePet(userId);
+    const baseChance = luckAdjustedChance(0.5, fresh.luck);
+    const winChance = applyPetToChance(baseChance, pet);
     const won = Math.random() < winChance;
-    const delta = won ? stake : -stake;
+
+    const winnings = applyPetToPayout(stake, pet);
+    const delta = won ? winnings : -stake;
     const updated = await db.addBalance(userId, delta);
 
     const resultEmbed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
+      .setThumbnail(ICONS.jackpot)
       .setTitle('🎰 JACKPOT')
       .setDescription(
         won
-          ? `🎉 **YOU WON!** Your **${formatMoney(stake)}** balance was doubled!`
+          ? `🎉 **YOU WON!** You gained **${formatMoney(winnings)}** on top of your stake!`
           : `💀 **YOU LOST EVERYTHING.** Your **${formatMoney(stake)}** balance is gone.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });

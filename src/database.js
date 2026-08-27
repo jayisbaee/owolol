@@ -37,6 +37,20 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_vaultbreak TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_hunt TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tickets INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS active_pet_id INTEGER;`);
+
+  // Pets are admin-defined custom creatures — see the pet engine and admin
+  // commands for how win_boost and payout_multiplier get applied in games.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pets (
+      id                SERIAL PRIMARY KEY,
+      owner_id          TEXT NOT NULL,
+      name              TEXT NOT NULL,
+      win_boost         REAL NOT NULL DEFAULT 0,
+      payout_multiplier REAL NOT NULL DEFAULT 1,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 async function getUser(userId) {
@@ -210,6 +224,68 @@ async function addTickets(userId, amount) {
   return rows[0];
 }
 
+// Creates a new custom pet owned by a user. winBoost is percentage points
+// added directly to win chance (can push all the way to guaranteed 100%
+// regardless of base odds or luck — this is the "make it OP" lever).
+// payoutMultiplier scales winnings on top of that.
+async function createPet(ownerId, name, winBoost, payoutMultiplier) {
+  await getUser(ownerId);
+  const { rows } = await pool.query(
+    `INSERT INTO pets (owner_id, name, win_boost, payout_multiplier)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [ownerId, name, winBoost, payoutMultiplier]
+  );
+  return rows[0];
+}
+
+async function getPetsByOwner(ownerId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM pets WHERE owner_id = $1 ORDER BY created_at`,
+    [ownerId]
+  );
+  return rows;
+}
+
+// Case-insensitive lookup across ALL pets (any owner) — used by /givepet to
+// clone an existing pet's stats onto a new owner.
+async function findPetByName(name) {
+  const { rows } = await pool.query(
+    `SELECT * FROM pets WHERE LOWER(name) = LOWER($1) ORDER BY created_at LIMIT 1`,
+    [name]
+  );
+  return rows[0] || null;
+}
+
+// Case-insensitive lookup scoped to one owner — used by /equippet.
+async function findOwnedPetByName(ownerId, name) {
+  const { rows } = await pool.query(
+    `SELECT * FROM pets WHERE owner_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`,
+    [ownerId, name]
+  );
+  return rows[0] || null;
+}
+
+async function setActivePet(userId, petId) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users SET active_pet_id = $2 WHERE user_id = $1 RETURNING *`,
+    [userId, petId]
+  );
+  return rows[0];
+}
+
+// Returns the user's currently equipped pet row, or null if they don't have
+// one active. This is what game commands check to apply pet effects.
+async function getActivePet(userId) {
+  const { rows } = await pool.query(
+    `SELECT p.* FROM users u
+     JOIN pets p ON p.id = u.active_pet_id
+     WHERE u.user_id = $1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -234,4 +310,10 @@ module.exports = {
   getUserCount,
   addCrates,
   addTickets,
+  createPet,
+  getPetsByOwner,
+  findPetByName,
+  findOwnedPetByName,
+  setActivePet,
+  getActivePet,
 };

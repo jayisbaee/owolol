@@ -12,6 +12,7 @@ const ICONS = {
   beg: `${BASE}/1f64f.png`, // pray
   crime: `${BASE}/1f3ad.png`, // masks
   hunt: `${BASE}/1f43a.png`, // wolf
+  crossroad: `${BASE}/1f414.png`, // chicken
   give: `${BASE}/1f91d.png`, // handshake
   leaderboard: `${BASE}/1f451.png`, // crown
   rob: `${BASE}/1f575-fe0f.png`, // detective
