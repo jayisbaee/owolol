@@ -1,4 +1,4 @@
-const ICONS = require('./icons');
+const ICONS = require('../games/icons');
 
 const CASINO_NAME = '🎰 Casino';
 const CASINO_AVATAR = ICONS.jackpot;
