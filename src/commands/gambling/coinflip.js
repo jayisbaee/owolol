@@ -5,6 +5,7 @@ const { formatMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
 const { applyPetToChance, applyPetToPayout } = require('../../games/petEngine');
 const { sendAsCasino } = require('../../utils/casinoWebhook');
+const { getGif } = require('../../games/gifEngine');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -46,6 +47,7 @@ module.exports = {
     const winnings = applyPetToPayout(amount, pet);
     const delta = won ? winnings : -amount;
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = await getGif(won ? 'coin flip win celebration' : 'coin flip lose sad');
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
@@ -57,6 +59,7 @@ module.exports = {
           : `You lost **${formatMoney(amount)}**.`
       )
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     // Try to post the result under the "🎰 Casino" persona instead of the
     // bot's own identity. Falls back to a normal reply if the bot doesn't

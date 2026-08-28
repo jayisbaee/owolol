@@ -4,6 +4,7 @@ const db = require('../../database');
 const { formatMoney, randInt } = require('../../utils/economyUtils');
 const { applyLuckToReels } = require('../../games/luckEngine');
 const { sendAsCasino } = require('../../utils/casinoWebhook');
+const { getGif } = require('../../games/gifEngine');
 
 const SYMBOLS = ['🍒', '🍋', '🍇', '🔔', '⭐', '💎'];
 // Payout multiplier when all 3 reels match, keyed by symbol.
@@ -56,6 +57,7 @@ module.exports = {
     }
 
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = await getGif(allMatch ? 'slot machine jackpot win' : 'slot machine spinning');
 
     const embed = new EmbedBuilder()
       .setColor(color)
@@ -63,6 +65,7 @@ module.exports = {
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     const posted = await sendAsCasino(interaction.channel, { embeds: [embed] });
     if (posted) {

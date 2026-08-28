@@ -5,6 +5,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
 const { freshDeck, handValue, renderHand } = require('../../games/blackjackEngine');
@@ -14,6 +15,7 @@ function buildEmbed({ player, dealer, revealDealer, statusText, color }) {
   const dealerValue = revealDealer ? ` (${handValue(dealer)})` : '';
   return new EmbedBuilder()
     .setColor(color || 0x5865f2)
+    .setThumbnail(ICONS.blackjack)
     .setTitle('🃏 Blackjack')
     .addFields(
       { name: 'Your hand', value: `${renderHand(player)}  (${handValue(player)})` },

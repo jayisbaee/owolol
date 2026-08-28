@@ -47,4 +47,6 @@ module.exports = {
   huntCooldownMs: 10 * 60 * 1000, // 10 minutes — fast, no penalty on loss
   raffleJackpot: 100_000_000_000, // 100 billion — the whole point of tickets
   raffleWinChance: 1 / 9,
+  tenorApiKey: process.env.TENOR_API_KEY || null,
+  giphyApiKey: process.env.GIPHY_API_KEY || null,
 };

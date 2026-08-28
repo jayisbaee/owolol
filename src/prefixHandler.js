@@ -30,6 +30,7 @@ const {
 } = require('./games/crateEngine');
 const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEngine');
 const { sendAsCasino } = require('./utils/casinoWebhook');
+const { getGif } = require('./games/gifEngine');
 const { FLEE_LINES, pickWeightedMonster } = require('./games/huntEngine');
 const { buildHelpDescription } = require('./games/helpText');
 
@@ -989,6 +990,7 @@ const handlers = {
 
     const winnings = applyPetToPayout(amount, pet);
     const updated = await db.addBalance(userId, won ? winnings : -amount);
+    const gifUrl = await getGif(won ? 'coin flip win celebration' : 'coin flip lose sad');
 
     const embed = new EmbedBuilder()
       .setColor(won ? 0x57f287 : 0xed4245)
@@ -996,6 +998,7 @@ const handlers = {
       .setTitle(`🪙 The coin landed on ${result}!`)
       .setDescription(won ? `You won **${formatMoney(winnings)}**!` : `You lost **${formatMoney(amount)}**.`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     const posted = await sendAsCasino(message.channel, { embeds: [embed] });
     if (!posted) await message.reply({ embeds: [embed] });
@@ -1031,6 +1034,9 @@ const handlers = {
       delta = 0; resultText = `It's a tie — your bet was refunded.`; color = 0xf5c518;
     }
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = await getGif(
+      outcome === 'win' ? 'dice roll win celebration' : outcome === 'loss' ? 'dice roll lose sad' : 'dice tie draw'
+    );
 
     const embed = new EmbedBuilder()
       .setColor(color)
@@ -1038,6 +1044,7 @@ const handlers = {
       .setTitle('🎲 Dice Roll-off')
       .setDescription(`You rolled **${yourRoll}**, the house rolled **${houseRoll}**.\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     const posted = await sendAsCasino(message.channel, { embeds: [embed] });
     if (!posted) await message.reply({ embeds: [embed] });
@@ -1088,6 +1095,7 @@ const handlers = {
       color = 0xed4245;
     }
     const updated = await db.addBalance(userId, delta);
+    const gifUrl = await getGif(allMatch ? 'slot machine jackpot win' : 'slot machine spinning');
 
     const embed = new EmbedBuilder()
       .setColor(color)
@@ -1095,6 +1103,7 @@ const handlers = {
       .setTitle('🎰 Slots')
       .setDescription(`[ ${reels.join(' | ')} ]\n\n${resultText}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    if (gifUrl) embed.setImage(gifUrl);
 
     const posted = await sendAsCasino(message.channel, { embeds: [embed] });
     if (!posted) await message.reply({ embeds: [embed] });
