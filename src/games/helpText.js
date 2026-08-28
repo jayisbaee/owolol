@@ -22,6 +22,7 @@ function buildHelpDescription(prefix) {
     `\`${p}givecrate <rarity> <amount> [@user]\`, \`${p}givetickets <amount> [@user]\`\n` +
     `\`${p}createpet <name> <winboost> [payoutmultiplier] [@user]\`, \`${p}givepet <name> [@user]\` — fully custom pets, up to guaranteed wins and absurd payout multipliers\n` +
     `\`${p}resetalleconomy\` (wipes every balance to 0, requires confirmation)\n\n` +
+    `**Autofarm**\n\`${p}autofarm <work|quest|beg> <30m|1h|2h|4h|8h|12h|24h>\` — start an idle farm, then run it again later to claim (earnings scale with how long you waited, capped at your chosen duration)\n\n` +
     `**Server Settings**\n\`/aliases\` (or \`${p}aliases\`) — view this server's custom command aliases\n` +
     `\`/setalias <alias> <command>\`, \`/removealias <alias>\` — anyone with Manage Server permission can create short custom aliases, e.g. \`${p}cr\` for \`${p}crates\`\n\n` +
     `Tip: type \`all\` instead of an amount on any gambling or bank command to use your whole balance (with a confirmation step on gambling commands).`

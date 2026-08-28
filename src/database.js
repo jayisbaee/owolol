@@ -38,6 +38,9 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_hunt TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tickets INTEGER NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS active_pet_id INTEGER;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_game TEXT;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_started_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_duration_minutes INTEGER;`);
 
   // Pets are admin-defined custom creatures — see the pet engine and admin
   // commands for how win_boost and payout_multiplier get applied in games.
@@ -343,6 +346,32 @@ async function resolveGuildAlias(guildId, alias) {
   return rows[0]?.command_name || null;
 }
 
+// Starts a new autofarm session, overwriting any previous one.
+async function startFarm(userId, game, durationMinutes) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET farm_game = $2, farm_started_at = now(), farm_duration_minutes = $3
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId, game, durationMinutes]
+  );
+  return rows[0];
+}
+
+// Clears an autofarm session (after claiming it).
+async function clearFarm(userId) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET farm_game = NULL, farm_started_at = NULL, farm_duration_minutes = NULL
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId]
+  );
+  return rows[0];
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -377,4 +406,6 @@ module.exports = {
   removeGuildAlias,
   getGuildAliases,
   resolveGuildAlias,
+  startFarm,
+  clearFarm,
 };

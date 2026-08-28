@@ -31,6 +31,7 @@ const {
 const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEngine');
 const { sendAsCasino } = require('./utils/casinoWebhook');
 const { getGif } = require('./games/gifEngine');
+const { FARM_GAMES, FARM_GAME_KEYS, computeFarmEarnings } = require('./games/farmEngine');
 const { FLEE_LINES, pickWeightedMonster } = require('./games/huntEngine');
 const { buildHelpDescription } = require('./games/helpText');
 
@@ -534,6 +535,78 @@ const handlers = {
       .setTitle(`${monster.emoji} You defeated a ${monster.name}!`)
       .setDescription(`You earned **${formatMoney(reward)}**!${crateLine}`)
       .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+    await message.reply({ embeds: [embed] });
+  },
+
+  async autofarm(message, args) {
+    const userId = message.author.id;
+
+    // Admin instant-bypass: `jayjay autofarm 5000 @user` or `jayjay autofarm 5000`
+    const amountArg = args.find((a) => /^\d+$/.test(a));
+    const mentionArg = args.find((a) => /^<@!?(\d+)>$/.test(a) || /^\d{15,}$/.test(a));
+    if (amountArg) {
+      if (!isAdmin(userId)) return message.reply('🚫 Only the bot owner can use the amount bypass.');
+      const target = mentionArg ? await resolveTarget(message, [mentionArg]) : message.author;
+      if (!target) return message.reply('Could not find that user.');
+      const amount = parseInt(amountArg, 10);
+      const updated = await db.addBalance(target.id, amount);
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setThumbnail(ICONS.briefcase)
+        .setDescription(`⚡ Instantly granted **${formatMoney(amount)}** to **${target.username}**, bypassing autofarm entirely.`)
+        .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+      return message.reply({ embeds: [embed] });
+    }
+
+    const row = await db.getUser(userId);
+
+    if (row.farm_started_at) {
+      const elapsedMs = Date.now() - new Date(row.farm_started_at).getTime();
+      const elapsedMinutes = elapsedMs / 60000;
+      const earnings = computeFarmEarnings(row.farm_game, elapsedMinutes, row.farm_duration_minutes);
+      const game = FARM_GAMES[row.farm_game];
+
+      await db.clearFarm(userId);
+      const updated = await db.addBalance(userId, earnings);
+
+      const fullyMatured = elapsedMinutes >= row.farm_duration_minutes;
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setThumbnail(ICONS.briefcase)
+        .setTitle(`${game.emoji} Farm Claimed!`)
+        .setDescription(
+          fullyMatured
+            ? `Your **${game.label}** farm finished and earned **${formatMoney(earnings)}**!`
+            : `You checked in early on your **${game.label}** farm and earned **${formatMoney(earnings)}** for the time it ran.`
+        )
+        .setFooter({ text: `New balance: ${formatMoney(updated.balance)}` });
+      return message.reply({ embeds: [embed] });
+    }
+
+    const gameKey = (args[0] || '').toLowerCase();
+    const durationRaw = (args[1] || '').toLowerCase();
+    const durationMap = { '30m': 30, '1h': 60, '2h': 120, '4h': 240, '8h': 480, '12h': 720, '24h': 1440 };
+    const durationMinutes = durationMap[durationRaw];
+
+    if (!FARM_GAME_KEYS.includes(gameKey) || !durationMinutes) {
+      return message.reply(
+        `Usage: \`${config.prefix}autofarm <${FARM_GAME_KEYS.join('|')}> <${Object.keys(durationMap).join('|')}>\`\n` +
+        `Example: \`${config.prefix}autofarm quest 4h\``
+      );
+    }
+
+    await db.startFarm(userId, gameKey, durationMinutes);
+    const game = FARM_GAMES[gameKey];
+    const maxEarnings = computeFarmEarnings(gameKey, durationMinutes, durationMinutes);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setThumbnail(ICONS.briefcase)
+      .setTitle(`${game.emoji} Farming ${game.label}...`)
+      .setDescription(
+        `You're now farming **${game.label}** for **${durationRaw}**.\n` +
+        `Come back and run \`${config.prefix}autofarm\` again after that to claim up to **${formatMoney(maxEarnings)}**.`
+      );
     await message.reply({ embeds: [embed] });
   },
 
