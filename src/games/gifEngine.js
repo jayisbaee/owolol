@@ -14,7 +14,7 @@ function randomFromArray(arr) {
 // interaction.deferReply(), so there's up to 15 minutes to work with in
 // theory — but a fixed, generous timeout keeps the experience snappy and
 // guarantees this can never hang indefinitely.
-async function fetchWithTimeout(url, ms = 7000) {
+async function fetchWithTimeout(url, ms = 9000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
@@ -25,18 +25,27 @@ async function fetchWithTimeout(url, ms = 7000) {
 }
 
 async function fetchTenorGif(searchTerm) {
-  if (!config.tenorApiKey) return null;
+  if (!config.tenorApiKey) return null; // silently skipped — no key configured, this is expected/normal
   try {
     const url =
       `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(searchTerm)}` +
       `&key=${config.tenorApiKey}&client_key=owo_clone_bot&limit=25&media_filter=gif&contentfilter=high`;
     const res = await fetchWithTimeout(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[gifEngine] Tenor request failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
     const data = await res.json();
-    if (!data.results || data.results.length === 0) return null;
+    if (!data.results || data.results.length === 0) {
+      console.error(`[gifEngine] Tenor returned no results for "${searchTerm}"`);
+      return null;
+    }
     const pick = randomFromArray(data.results);
-    return pick.media_formats?.gif?.url || pick.media_formats?.tinygif?.url || null;
-  } catch (_) {
+    const gifUrl = pick.media_formats?.gif?.url || pick.media_formats?.tinygif?.url || null;
+    if (!gifUrl) console.error('[gifEngine] Tenor result had no usable image URL:', JSON.stringify(pick.media_formats));
+    return gifUrl;
+  } catch (err) {
+    console.error('[gifEngine] Tenor request threw:', err.message);
     return null;
   }
 }
@@ -48,12 +57,21 @@ async function fetchGiphyGif(searchTerm) {
       `https://api.giphy.com/v1/gifs/search?api_key=${key}` +
       `&q=${encodeURIComponent(searchTerm)}&limit=25&rating=pg-13&lang=en`;
     const res = await fetchWithTimeout(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[gifEngine] Giphy request failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
     const data = await res.json();
-    if (!data.data || data.data.length === 0) return null;
+    if (!data.data || data.data.length === 0) {
+      console.error(`[gifEngine] Giphy returned no results for "${searchTerm}"`);
+      return null;
+    }
     const pick = randomFromArray(data.data);
-    return pick.images?.original?.url || pick.images?.downsized?.url || null;
-  } catch (_) {
+    const gifUrl = pick.images?.original?.url || pick.images?.downsized?.url || null;
+    if (!gifUrl) console.error('[gifEngine] Giphy result had no usable image URL:', JSON.stringify(pick.images));
+    return gifUrl;
+  } catch (err) {
+    console.error('[gifEngine] Giphy request threw:', err.message);
     return null;
   }
 }
@@ -64,7 +82,11 @@ async function fetchGiphyGif(searchTerm) {
 async function getGif(searchTerm) {
   const tenorResult = await fetchTenorGif(searchTerm);
   if (tenorResult) return tenorResult;
-  return fetchGiphyGif(searchTerm);
+  const giphyResult = await fetchGiphyGif(searchTerm);
+  if (!giphyResult) {
+    console.error(`[gifEngine] Both Tenor and Giphy failed for "${searchTerm}" — no image attached this time.`);
+  }
+  return giphyResult;
 }
 
 module.exports = { getGif };
