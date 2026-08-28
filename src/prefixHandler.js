@@ -32,6 +32,7 @@ const { ITEMS: SHOP_ITEMS, ITEM_KEYS: SHOP_ITEM_KEYS } = require('./games/shopEn
 const { sendAsCasino } = require('./utils/casinoWebhook');
 const { getGif } = require('./games/gifEngine');
 const { FARM_GAMES, FARM_GAME_KEYS, computeFarmEarnings } = require('./games/farmEngine');
+const { streakContinues, computeStreakBonus } = require('./games/streakEngine');
 const { FLEE_LINES, pickWeightedMonster } = require('./games/huntEngine');
 const { buildHelpDescription } = require('./games/helpText');
 
@@ -179,6 +180,44 @@ const handlers = {
       .addFields(
         { name: 'Wallet', value: formatMoney(row.balance), inline: true },
         { name: 'Bank', value: formatMoney(row.bank), inline: true }
+      );
+    await message.reply({ embeds: [embed] });
+  },
+
+  async profile(message, args) {
+    const target = (await resolveTarget(message, args)) || message.author;
+    const row = await db.getUser(target.id);
+
+    const totalCrates = CRATE_RARITY_KEYS.reduce((sum, key) => sum + (row[`crates_${key}`] || 0), 0);
+    const crateSummary = CRATE_RARITY_KEYS
+      .filter((key) => row[`crates_${key}`] > 0)
+      .map((key) => `${CRATE_RARITIES[key].emoji}${row[`crates_${key}`]}`)
+      .join(' ') || 'None';
+
+    const pets = await db.getPetsByOwner(target.id);
+    const activePet = pets.find((p) => p.id === row.active_pet_id);
+    const petLine = activePet
+      ? `${activePet.name} (${activePet.win_boost >= 0 ? '+' : ''}${activePet.win_boost}% win, ${activePet.payout_multiplier}x payout)`
+      : pets.length > 0
+      ? `None equipped (${pets.length} owned)`
+      : 'None';
+
+    const farmLine = row.farm_started_at
+      ? `🌱 Farming **${row.farm_game}** — check \`${config.prefix}autofarm\` to claim`
+      : 'Not farming';
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setAuthor({ name: `${target.username}'s Profile`, iconURL: target.displayAvatarURL() })
+      .addFields(
+        { name: '💰 Wallet', value: formatMoney(row.balance), inline: true },
+        { name: '🏦 Bank', value: formatMoney(row.bank), inline: true },
+        { name: '🔥 Daily Streak', value: `${row.daily_streak} day${row.daily_streak === 1 ? '' : 's'}`, inline: true },
+        { name: '🐾 Active Pet', value: petLine, inline: false },
+        { name: `📦 Crates (${totalCrates} total)`, value: crateSummary, inline: false },
+        { name: '🎟️ Tickets', value: `${row.tickets}`, inline: true },
+        { name: '🔩 Drills', value: `${row.drills}`, inline: true },
+        { name: '🌾 Autofarm', value: farmLine, inline: true }
       );
     await message.reply({ embeds: [embed] });
   },
@@ -347,15 +386,26 @@ const handlers = {
       return message.reply(`⏳ You already claimed your daily. Come back in **${msToTimeString(remaining)}**.`);
     }
 
-    await db.addBalance(userId, config.dailyAmount);
+    const newStreak = streakContinues(row.last_daily, config.dailyStreakGraceHours) ? row.daily_streak + 1 : 1;
+    const bonus = computeStreakBonus(newStreak, config.dailyStreakBonusPerDay, config.dailyStreakMaxBonus);
+    const reward = Math.floor(config.dailyAmount * (1 + bonus));
+
+    await db.addBalance(userId, reward);
     await db.addCrates(userId, 'common', 1);
     await db.setLastDaily(userId, new Date(now));
+    await db.setDailyStreak(userId, newStreak);
+
+    const streakLine = bonus > 0
+      ? `🔥 **${newStreak}-day streak** — that's a **+${Math.round(bonus * 100)}%** bonus!`
+      : `🔥 Streak started! Come back within ${config.dailyStreakGraceHours}h to keep it going.`;
+
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setThumbnail(ICONS.daily)
       .setDescription(
-        `✅ You claimed your daily and received **${formatMoney(config.dailyAmount)}**!\n` +
-        `${CRATE_RARITIES.common.emoji} You also got a **Common Crate**! Use \`${config.prefix}opencrate common\` to open it.`
+        `✅ You claimed your daily and received **${formatMoney(reward)}**!\n` +
+        `${CRATE_RARITIES.common.emoji} You also got a **Common Crate**! Use \`${config.prefix}opencrate common\` to open it.\n\n` +
+        streakLine
       );
     await message.reply({ embeds: [embed] });
   },

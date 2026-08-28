@@ -6,6 +6,7 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require('discord.js');
+const ICONS = require('../../games/icons');
 const db = require('../../database');
 const { formatMoney } = require('../../utils/economyUtils');
 const { luckAdjustedChance } = require('../../games/luckEngine');
@@ -52,6 +53,7 @@ module.exports = {
 
     const challengeEmbed = new EmbedBuilder()
       .setColor(0xf5c518)
+      .setThumbnail(ICONS.battle)
       .setTitle('⚔️ Battle Challenge!')
       .setDescription(
         `**${interaction.user.username}** has challenged **${opponent.username}** to a battle for **${formatMoney(amount)}**!\n\n` +
@@ -108,6 +110,7 @@ module.exports = {
 
     const resultEmbed = new EmbedBuilder()
       .setColor(0x57f287)
+      .setThumbnail(ICONS.battle)
       .setTitle('⚔️ Battle Result')
       .setDescription(`**${winnerName}** defeated **${loserName}** and won the pot of **${formatMoney(pot)}**!`)
       .setFooter({ text: `${winnerName}'s new balance: ${formatMoney(updatedWinner.balance)}` });

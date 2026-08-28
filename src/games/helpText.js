@@ -4,7 +4,7 @@ function buildHelpDescription(prefix) {
   const p = prefix;
   return (
     `Both \`/slash\` commands and \`${p}prefix\` commands work — this list covers both.\n\n` +
-    `**Economy**\n\`${p}balance [@user]\`, \`${p}daily\`, \`${p}work\`, \`${p}quest\`, \`${p}beg\`, \`${p}crime\`, \`${p}hunt\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
+    `**Economy**\n\`${p}balance [@user]\`, \`${p}profile [@user]\` (full stats snapshot), \`${p}daily\` (streak bonus for consecutive days), \`${p}work\`, \`${p}quest\`, \`${p}beg\`, \`${p}crime\`, \`${p}hunt\`, \`${p}give @user <amount>\`, \`${p}leaderboard\`\n` +
     `\`${p}rob @user\` (risky — chance to fail and pay a fine), \`${p}battle @user <amount>\` (PvP wager, winner takes all)\n\n` +
     `**Bank**\n\`${p}deposit <amount|all>\`, \`${p}withdraw <amount|all>\` — banked coins are safe from \`${p}rob\` (but not \`${p}vaultbreak\`)\n\n` +
     `**Shop**\n\`${p}shop\` (view items), \`${p}buy <item> [amount]\` — buy Luck Upgrades or Electric Drills\n` +

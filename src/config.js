@@ -49,4 +49,7 @@ module.exports = {
   raffleWinChance: 1 / 9,
   tenorApiKey: process.env.TENOR_API_KEY || null,
   giphyApiKey: process.env.GIPHY_API_KEY || null,
+  dailyStreakGraceHours: 48, // claim within this window of your last daily to keep the streak alive
+  dailyStreakBonusPerDay: 0.02, // +2% to daily reward per streak day
+  dailyStreakMaxBonus: 1.0, // capped at +100% (2x reward) at a 50-day streak
 };

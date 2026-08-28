@@ -41,6 +41,7 @@ async function ensureSchema() {
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_game TEXT;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_started_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS farm_duration_minutes INTEGER;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_streak INTEGER NOT NULL DEFAULT 0;`);
 
   // Pets are admin-defined custom creatures — see the pet engine and admin
   // commands for how win_boost and payout_multiplier get applied in games.
@@ -372,6 +373,15 @@ async function clearFarm(userId) {
   return rows[0];
 }
 
+async function setDailyStreak(userId, streak) {
+  await getUser(userId);
+  const { rows } = await pool.query(
+    `UPDATE users SET daily_streak = $2 WHERE user_id = $1 RETURNING *`,
+    [userId, streak]
+  );
+  return rows[0];
+}
+
 module.exports = {
   pool,
   ensureSchema,
@@ -408,4 +418,5 @@ module.exports = {
   resolveGuildAlias,
   startFarm,
   clearFarm,
+  setDailyStreak,
 };
